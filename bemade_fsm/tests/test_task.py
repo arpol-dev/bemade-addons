@@ -150,3 +150,18 @@ class TaskTest(BemadeFSMBaseTest):
                 subtask.name = "Subtask 1"
         subtask = task.child_ids[-1]
         self.assertEqual(subtask.site_contacts, task.site_contacts)
+
+    def test_subtask_inherits_parent_customer(self):
+        so = self._generate_sale_order()
+        product = self._generate_product()
+        partner = so.partner_id
+        sol = self._generate_sale_order_line(so, product)
+        so.action_confirm()
+        task = sol.task_id
+
+        self.assertEqual(task.partner_id, partner)
+        with Form(task) as form:
+            with form.child_ids.new() as child_form:
+                child_form.name = "something"
+
+        self.assertEqual(task.child_ids.partner_id, task.partner_id)
