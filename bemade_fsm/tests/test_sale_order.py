@@ -348,15 +348,16 @@ class TestSalesOrder(BemadeFSMBaseTest):
 
         so.write(
             {
-                "partner_shipping_id": self.env["res.partner"].create(
+                "partner_shipping_id": self.env["res.partner"]
+                .create(
                     {
                         "name": "New shipping address",
                         "parent_id": so.partner_id.id,
                         "type": "delivery",
                     }
                 )
+                .id
             }
         )
-
         for task in parent_task._get_all_subtasks() | parent_task:
             self.assertEqual(so.partner_shipping_id, task.partner_id)
