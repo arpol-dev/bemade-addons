@@ -142,6 +142,7 @@ class SaleOrderLine(models.Model):
             vals["tag_ids"] = template.tags.ids
             vals["allocated_hours"] = template.planned_hours
             vals["sequence"] = template.sequence
+            # vals["partner_id"] = parent and parent.partner_id and parent.partner_id.id
             if template.equipment_ids:
                 vals["equipment_ids"] = template.equipment_ids.ids
             return vals
