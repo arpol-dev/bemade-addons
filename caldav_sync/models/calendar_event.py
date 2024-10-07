@@ -59,9 +59,9 @@ class CalendarEvent(models.Model):
     @api.depends("user_id", "partner_ids", "partner_ids.user_id")
     def _compute_caldav_users(self):
         for rec in self:
-            rec.caldav_user_ids = (
-                rec.user_id | rec.partner_ids.mapped("user_id")
-            ).filtered(lambda user: user.is_caldav_enabled)
+            rec.caldav_user_ids = (rec.user_id | rec.partner_ids.user_ids).filtered(
+                "is_caldav_enabled"
+            )
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -249,7 +249,8 @@ class CalendarEvent(models.Model):
         """Match the fields from calendar.event (recurring fields) to the fields specified in RRULE at
         https://icalendar.org/iCalendar-RFC-5545/3-8-5-3-recurrence-rule.html"""
 
-        rrule = component.get("rrule")
+        rrule = [item[1] for item in component.property_items() if item[0] == "RRULE"]
+        rrule = rrule[0] if rrule else None
         if not rrule:
             if not self.recurrency:
                 # No change, this was already not a recurring event
@@ -268,7 +269,7 @@ class CalendarEvent(models.Model):
                     return {"recurrence_update": "all_events", "recurrency": False}
         rrule_str = rrule.to_ical().decode("utf-8")
         sequence = component.get("sequence")
-        if sequence and sequence != 0:
+        if sequence and sequence != 1:
             # This is not the base event so we can't change recurrence properties
             return {}
 
@@ -315,15 +316,19 @@ class CalendarEvent(models.Model):
             partner_ids = self._get_attendee_partners(component, current_user_email)
 
             existing_instance = self._get_existing_instance(uid, recurrence_id)
+            outdated = False
             last_modified = component.decoded("last-modified")
             if existing_instance and last_modified:
                 last_modified = last_modified.astimezone(utc).replace(tzinfo=None)
                 if last_modified < existing_instance.write_date:
-                    _logger.info(
-                        f"Last modified date {last_modified} is before most recent "
-                        f"write date {existing_instance.write_date}. Skipping."
-                    )
-                    continue
+                    # _logger.info(
+                    #     f"Last modified date {last_modified} is before most recent "
+                    #     f"write date {existing_instance.write_date}. Skipping."
+                    # )
+                    outdated = True
+            owned = (
+                existing_instance and existing_instance.partner_id == user.partner_id
+            )
             values, recurrency_vals = (
                 self._get_vals_recurrency_vals_from_ical_component(
                     partner_ids, component, user
@@ -333,6 +338,14 @@ class CalendarEvent(models.Model):
             if not existing_instance:
                 _logger.info(f"Creating with vals: {values}")
                 self.with_context(caldav_no_sync=True).create(values)
+            elif outdated or not owned:
+                _logger.info(
+                    f"Event {existing_instance.caldav_uid} "
+                    f"{'outdated ' if outdated else ''}"
+                    f"{'not owned by user ' + user.name if not owned else ''}."
+                    f" Skipping."
+                )
+                pass  # Do nothing, it's not this user's event to modify or it's outdated
             else:
                 # Don't update partner_ids if no change
                 if partner_ids != existing_instance.partner_ids:
@@ -473,13 +486,3 @@ class CalendarEvent(models.Model):
             "tentative": "TENTATIVE",
         }
         return mapping.get(state, "NEEDS-ACTION")
-
-    @staticmethod
-    def _map_ical_status(ical_status):
-        mapping = {
-            "NEEDS-ACTION": "needsAction",
-            "ACCEPTED": "accepted",
-            "DECLINED": "declined",
-            "TENTATIVE": "tentative",
-        }
-        return mapping.get(ical_status, "needsAction")

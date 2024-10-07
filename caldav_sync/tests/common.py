@@ -6,12 +6,15 @@ class CaldavTestCommon:
     def _generate_user(
         cls, name, caldav_username=None, caldav_password=None, caldav_url=None
     ):
+        groups_ids = cls.env.ref("base.group_user") | cls.env.ref(
+            "base.group_partner_manager"
+        )
         vals = {
             "name": name,
             "login": name,
             "password": name,
             "email": name + "@example.com",
-            "groups_id": [Command.set(cls.env.ref("base.group_user").ids)],
+            "groups_id": [Command.set(groups_ids.ids)],
         }
         if caldav_username:
             vals.update(caldav_username=caldav_username)
