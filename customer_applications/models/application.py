@@ -6,22 +6,23 @@ class Application(models.Model):
     _description = "Partner Application"
     _inherit = ["mail.thread", "mail.activity.mixin"]
 
+    name = fields.Char(tracking=1)
+    description = fields.Text(tracking=2)
     partner_id = fields.Many2one(
         comodel_name="res.partner",
-        string="Location",
         required=True,
-        tracking=1,
+        tracking=3,
         copy=False,
     )
     application_type_id = fields.Many2one(
         comodel_name="partner.application.type",
         required=True,
-        tracking=2,
+        tracking=4,
     )
     specification_ids = fields.One2many(
         comodel_name="partner.application.specification",
         inverse_name="application_id",
-        tracking=3,
+        tracking=5,
     )
 
     def copy(self, default=None):
