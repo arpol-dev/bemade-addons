@@ -25,7 +25,7 @@
     "author": "Bemade Inc.",
     "website": "http://www.bemade.org",
     "license": "LGPL-3",
-    "depends": ["industry_fsm", "account"],
+    "depends": ["industry_fsm", "account", "contacts"],
     "data": [
         "security/ir.model.access.csv",
         "views/equipment_views.xml",

@@ -34,7 +34,10 @@
     </record>
     <menuitem id="application_types"
               parent="contacts.res_partner_menu_config"
-              groups="base.group_partner_manager"
+              groups="group_applications_admin"
               action="view_application_types"
     />
+    <record id="contacts.res_partner_menu_config" model="ir.ui.menu">
+        <field name="sequence" eval="99"/>
+    </record>
 </odoo>

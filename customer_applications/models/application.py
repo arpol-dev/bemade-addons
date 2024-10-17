@@ -18,6 +18,7 @@ class Application(models.Model):
         comodel_name="partner.application.type",
         required=True,
         tracking=4,
+        ondelete="restrict",
     )
     specification_ids = fields.One2many(
         comodel_name="partner.application.specification",

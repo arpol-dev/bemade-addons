@@ -31,6 +31,12 @@ class PartnerApplicationType(models.Model):
         string="Partners",
         readonly=True,
     )
+    allowed_specification_keys = fields.Many2many(
+        comodel_name="partner.application.specification.key",
+        relation="application_specification_key_application_type_rel",
+        column1="application_type_id",
+        column2="application_specification_key_id",
+    )
 
     @api.depends("application_ids", "application_ids.partner_id")
     def _compute_partner_ids(self):

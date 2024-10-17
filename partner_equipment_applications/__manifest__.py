@@ -18,23 +18,19 @@
 #    DEALINGS IN THE SOFTWARE.
 #
 {
-    "name": "Customer Applications",
+    "name": "Partner Application Equipment",
     "version": "17.0.1.0.0",
-    "summary": "Adds the notion of applications to partners.",
-    "category": "Contacts",
+    "summary": "Make the link between customer_applications and fsm_equipment.",
+    "category": "Services/Field Service",
     "author": "Bemade Inc.",
     "website": "http://www.bemade.org",
     "license": "LGPL-3",
-    "depends": ["contacts", "incrementing_sequence_mixin"],
+    "depends": ["fsm_equipment", "customer_applications"],
     "data": [
-        "security/groups.xml",
-        "security/ir.model.access.csv",
-        "data/menus_actions.xml",
-        "views/application_type_views.xml",
-        "views/res_partner_views.xml",
+        "views/equipment_views.xml",
         "views/application_views.xml",
     ],
     "assets": {},
     "installable": True,
-    "auto_install": False,
+    "auto_install": True,
 }
