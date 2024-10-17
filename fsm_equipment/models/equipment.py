@@ -26,7 +26,8 @@ class Equipment(models.Model):
         comodel_name="res.partner",
         string="Physical Address",
         tracking=True,
-        ondelete="cascade",
+        ondelete="restrict",
+        required=True,
     )
 
     location_notes = fields.Text(

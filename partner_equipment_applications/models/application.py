@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
 
 
@@ -20,7 +20,7 @@ class PartnerApplication(models.Model):
         for application in self:
             if len(application.equipment_ids.partner_id) > 1:
                 raise ValidationError(
-                    "An application can only be linked to one partner."
+                    _("An application can only be linked to one partner.")
                 )
 
     @api.depends("equipment_ids")

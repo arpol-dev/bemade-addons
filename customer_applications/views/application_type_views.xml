@@ -23,7 +23,7 @@
                         <button name="%(action_view_partner_applications_by_type)d"
                                 type="action"
                                 class="oe_stat_button"
-                                context="{'application_type_id': active_id}"
+                                context="{'application_type_id': id}"
                                 icon="fa-gears"
                         >
                             <field name="applications_count" string="Applications"

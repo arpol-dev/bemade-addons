@@ -10,7 +10,7 @@
                             type="action"
                             class="oe_stat_button"
                             icon="fa-cogs"
-                            context="{'partner_id': active_id}"
+                            context="{'partner_id': id}"
                     >
                         <field string="Applications" name="applications_count"
                                widget="statinfo"/>

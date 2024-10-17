@@ -1,4 +1,5 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, _
+from odoo.exceptions import ValidationError
 
 
 class PartnerApplicationSpecification(models.Model):
@@ -12,7 +13,7 @@ class PartnerApplicationSpecification(models.Model):
         tracking=1,
         ondelete="restrict",
         domain="[('id', 'in', allowed_specification_keys)]",
-        string="Name",
+        string="Specification Name",
         required=True,
     )
     name = fields.Char(
@@ -29,3 +30,13 @@ class PartnerApplicationSpecification(models.Model):
     allowed_specification_keys = fields.Many2many(
         related="application_id.application_type_id.allowed_specification_keys",
     )
+
+    @api.constrains("key_id")
+    def _constrain_key_id(self):
+        for rec in self:
+            if rec.key_id not in rec.allowed_specification_keys:
+                raise ValidationError(
+                    _(
+                        f"Key '{rec.key_id.name}' is not allowed for this application type."
+                    )
+                )
