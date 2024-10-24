@@ -5,7 +5,8 @@ from odoo.osv import expression
 class Equipment(models.Model):
     _name = "fsm.equipment"
     _description = "Partner-Owned Equipment"
-    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _inherit = ["mail.thread", "mail.activity.mixin", "incrementing.sequence.mixin"]
+    _sequence_group = "parent_id"
 
     code = fields.Char(
         tracking=True,
@@ -50,10 +51,22 @@ class Equipment(models.Model):
         tracking=True,
     )
 
-    equipment_component_ids = fields.One2many(
-        "fsm.equipment.component",
-        inverse_name="equipment_id",
+    parent_id = fields.Many2one(
+        "fsm.equipment",
         tracking=True,
+    )
+
+    child_ids = fields.One2many(
+        "fsm.equipment",
+        inverse_name="parent_id",
+        string="Components",
+        tracking=True,
+    )
+
+    product_id = fields.Many2one(
+        "product.product",
+        ondelete="restrict",
+        help="The product that represents this equipment, if any.",
     )
 
     @api.model

@@ -19,13 +19,13 @@
 #
 {
     "name": "FSM Equipment",
-    "version": "17.0.0.1.2",
+    "version": "17.0.0.2.0",
     "summary": "Add the notion of client equipment for Field Service",
     "category": "Services/Field Service",
     "author": "Bemade Inc.",
     "website": "http://www.bemade.org",
     "license": "LGPL-3",
-    "depends": ["industry_fsm", "account", "contacts"],
+    "depends": ["industry_fsm", "account", "contacts", "incrementing_sequence_mixin"],
     "data": [
         "security/ir.model.access.csv",
         "views/equipment_views.xml",

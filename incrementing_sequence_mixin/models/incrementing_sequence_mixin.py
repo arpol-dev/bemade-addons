@@ -25,9 +25,11 @@ class IncrementingSequenceMixin(models.AbstractModel):
                 group_field_data = getattr(rec, group_field)
                 if hasattr(group_field_data, "id"):
                     group_field_data = group_field_data.id
-                group = self.env[rec._name].search(
-                    [(group_field, "=", group_field_data)]
-                )
+                    group = self.env[rec._name].search(
+                        [(group_field, "=", group_field_data)]
+                    )
+                else:
+                    group = None
                 max_seq = max(group.mapped("sequence")) if group else 0
                 rec.sequence = max_seq + 1
         return res
@@ -37,7 +39,9 @@ class IncrementingSequenceMixin(models.AbstractModel):
         group_field_data = getattr(self, group_field)
         if hasattr(group_field_data, "id"):
             group_field_data = group_field_data.id
-        group = self.env[self._name].search([(group_field, "=", group_field_data)])
+            group = self.env[self._name].search([(group_field, "=", group_field_data)])
+        else:
+            group = None
         max_seq = max(group.mapped("sequence")) if group else 0
         # Don't recalculate if already set
         for rec in self.filtered(lambda r: r.sequence == 0):
