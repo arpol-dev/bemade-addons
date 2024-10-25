@@ -30,6 +30,7 @@
         "security/ir.model.access.csv",
         "views/equipment_views.xml",
         "views/res_partner_views.xml",
+        "views/project_task_views.xml",
     ],
     "assets": {},
     "installable": True,

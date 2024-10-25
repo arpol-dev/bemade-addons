@@ -3,7 +3,7 @@ from odoo.tools.sql import SQL
 
 
 def migrate(cr, version):
-    sql = "select * from equipment_component"
+    sql = "select * from fsm_equipment_component"
     cr.execute(SQL(sql))
     components = cr.dictfetchall()
     sql = "select * from fsm_equipment_component_purpose"

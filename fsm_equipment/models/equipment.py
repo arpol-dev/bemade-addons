@@ -1,5 +1,6 @@
 from odoo import models, fields, api, _
 from odoo.osv import expression
+from odoo.exceptions import ValidationError
 
 
 class Equipment(models.Model):
@@ -28,7 +29,7 @@ class Equipment(models.Model):
         string="Physical Address",
         tracking=True,
         ondelete="restrict",
-        required=True,
+        required=False,
     )
 
     location_notes = fields.Text(
@@ -55,6 +56,13 @@ class Equipment(models.Model):
         "fsm.equipment",
         tracking=True,
     )
+    inherited_partner_id = fields.Many2one(
+        comodel_name="res.partner",
+        string="Main Equipment Location",
+        readonly=True,
+        compute="_compute_inherited_partner_id",
+        recursive=True,
+    )
 
     child_ids = fields.One2many(
         "fsm.equipment",
@@ -68,6 +76,28 @@ class Equipment(models.Model):
         ondelete="restrict",
         help="The product that represents this equipment, if any.",
     )
+
+    @api.depends("parent_id", "parent_id.partner_id")
+    def _compute_inherited_partner_id(self):
+        for rec in self:
+            if not rec.parent_id:
+                rec.inherited_partner_id = False
+                continue
+            rec.inherited_partner_id = (
+                rec.parent_id.partner_id or rec.parent_id.inherited_partner_id
+            )
+
+    @api.constrains("product_id", "partner_id")
+    def _constrain_only_root_has_partner(self):
+        for rec in self:
+            if rec.partner_id and rec.parent_id:
+                raise ValidationError(
+                    _("Only top-level (root) equipments can be linked to a partner.")
+                )
+            if not rec.parent_id and not rec.partner_id:
+                raise ValidationError(
+                    _("Top-level (root) equipments must be linked to a partner.")
+                )
 
     @api.model
     def name_search(self, name="", args=None, operator="ilike", limit=100):
