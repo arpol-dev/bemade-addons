@@ -1,0 +1,15 @@
+.o_recursive_expand_column {
+    width: 30px;
+}
+
+tr[data-depth="1"] .o_recursive_expand_column {
+    padding-left: 20px;
+}
+
+tr[data-depth="2"] .o_recursive_expand_column {
+    padding-left: 40px;
+}
+
+tr[data-depth="3"] .o_recursive_expand_column {
+    padding-left: 60px;
+}

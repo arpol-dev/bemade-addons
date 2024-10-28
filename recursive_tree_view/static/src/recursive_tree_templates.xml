@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <!-- Extend List Renderer Header to Add Extra Column for Expand/Collapse Button Alignment -->
+    <t t-name="recursive_tree_view.Renderer" t-inherit="web.ListRenderer" t-inherit-mode="extension">
+        <xpath expr="//th[hasclass('o_list_record_selector')]" position="before">
+            <th t-if="recursive" class="o_recursive_expand_column"></th>
+        </xpath>
+    </t>
+
+    <!-- Extend List Renderer Row to Add Expand/Collapse Button -->
+    <t t-name="recursive_tree_view.RecordRow" t-inherit="web.ListRenderer.RecordRow" t-inherit-mode="extension">
+        <xpath expr="//td[1]" position="before">
+            <td t-if="this.recursive" class="o_recursive_expand_column">
+                <!-- Use @click to bind the button click to _onExpandClick -->
+                <button t-if="record.data.hasChildren"
+                        t-att-data-expand="props.record.id.raw_value"
+                        t-on-click.prevent="_onExpandClick"
+                        class="o_expand_button">+</button>
+            </td>
+        </xpath>
+    </t>
+</odoo>
