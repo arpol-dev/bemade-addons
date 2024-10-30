@@ -30,11 +30,7 @@
     "data": [],
     "assets": {
         "web.assets_backend": [
-            "recursive_tree_view/static/src/list_arch_parser.js",
-            "recursive_tree_view/static/src/list_controller.js",
-            "recursive_tree_view/static/src/list_renderer.js",
-            "recursive_tree_view/static/src/tree_recursive_styles.css",
-            "recursive_tree_view/static/src/recursive_tree_templates.xml",
+            "recursive_tree_view/static/src/**/*",
         ]
     },
     "installable": True,

@@ -2,14 +2,27 @@
     width: 30px;
 }
 
-tr[data-depth="1"] .o_recursive_expand_column {
-    padding-left: 20px;
+.o_expand_button {
+    border-color: transparent;
+    background-color: transparent;
 }
 
-tr[data-depth="2"] .o_recursive_expand_column {
-    padding-left: 40px;
+button.o_expand_button[data-depth="1"] {
+    margin-left: 15px;
 }
 
-tr[data-depth="3"] .o_recursive_expand_column {
-    padding-left: 60px;
+button.o_expand_button[data-depth="2"] {
+    margin-left: 30px;
+}
+
+button.o_expand_button[data-depth="3"] {
+    margin-left: 45px;
+}
+
+button.o_expand_button[data-depth="4"] {
+    margin-left: 60px;
+}
+
+button.o_expand_button[data-depth="5"] {
+    margin-left: 75px;
 }

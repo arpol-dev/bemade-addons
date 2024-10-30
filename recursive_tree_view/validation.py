@@ -34,11 +34,6 @@ def schema_tree(arch, **kwargs):
                         _tag="{%s}attribute" % RNG_NS,
                         name="recursive",
                     )
-                    child_field_attr = etree.SubElement(
-                        optional_attr,
-                        _tag="{%s}attribute" % RNG_NS,
-                        name="child-field",
-                    )
 
             # Create RelaxNG validator from the modified schema
             _tree_validator = etree.RelaxNG(rng_doc)

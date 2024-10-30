@@ -10,14 +10,7 @@ patch(ListArchParser.prototype, {
         const recursiveAttr = xmlDoc.getAttribute("recursive")
         if ( recursiveAttr ) {
             result.recursive = recursiveAttr === "1" || recursiveAttr === "true" || recursiveAttr === "True";
-            result.childField = xmlDoc.getAttribute("child-field")
-
-            if (!(result.childField in result)) {
-
-            }
         }
-
-
         return result;
     }
 })
