@@ -1,5 +1,5 @@
 from odoo import models, fields, api
-from pytz import timezone
+from pytz import timezone, utc
 
 
 class RecurrenceRule(models.Model):
@@ -7,10 +7,7 @@ class RecurrenceRule(models.Model):
 
     def _recompute_event_caldav_recurrence_ids(self):
         def _get_recurrence_id(event):
-            date_format = "%Y%m%d" if event.allday else "%Y%m%dT%H%M%S"
-            return event.start.astimezone(timezone(event.user_id.tz)).strftime(
-                date_format
-            )
+            return event.start.astimezone(utc).replace(tzinfo=None)
 
         for event in self.calendar_event_ids:
             event.caldav_recurrence_id = _get_recurrence_id(event)
