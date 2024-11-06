@@ -7,8 +7,7 @@ from odoo.addons.calendar.models.calendar_recurrence import MAX_RECURRENT_EVENT
 import caldav
 import logging
 from datetime import datetime, date
-from icalendar import vCalAddress, vText, vDatetime, vRecur, Event
-from bs4 import BeautifulSoup
+from icalendar import vCalAddress, vText, vDatetime, vRecur, Event, vInt
 import re
 from pytz import timezone, utc
 from typing import List, Dict, TypeVar, Optional
@@ -71,6 +70,8 @@ class CalendarEvent(models.Model):
     # when applying a recurrence.
     caldav_recurrence_id = fields.Datetime(
         string="CalDAV Recurrence ID",
+        compute="_compute_caldav_recurrence_id",
+        store=True,
     )
     caldav_user_ids = fields.Many2many(
         comodel_name="res.users",
@@ -82,6 +83,23 @@ class CalendarEvent(models.Model):
     ###################################
     #### Field Computation Methods ####
     ###################################
+
+    @api.depends("recurrence_id.dtstart")
+    def _compute_caldav_recurrence_id(self):
+        for event in self:
+            if event.recurrence_id:
+                time = event.recurrence_id.dtstart.time()
+                date = event.start.date()
+                event.caldav_recurrence_id = datetime(
+                    date.year,
+                    date.month,
+                    date.day,
+                    time.hour,
+                    time.minute,
+                    time.second,
+                )
+            else:
+                event.caldav_recurrence_id = False
 
     @api.depends("name", "description", "partner_ids", "location", "videocall_location")
     def _compute_differs_from_base_event(self):
@@ -145,8 +163,8 @@ class CalendarEvent(models.Model):
         :return: The timezone-aware datetime that uniquely identifies this
         event in the recurrence chain.
         """
-        user_tz = timezone(self.user_id.tz)
-        recurrence_id = utc.localize(self.caldav_recurrence_id).astimezone(user_tz)
+        event_tz = timezone(self.event_tz)
+        recurrence_id = utc.localize(self.caldav_recurrence_id).astimezone(event_tz)
         return recurrence_id
 
     #################################################################
@@ -171,11 +189,11 @@ class CalendarEvent(models.Model):
                 client = user._get_caldav_client()
                 calendar = client.calendar(url=user.caldav_calendar_url)
                 # try:
-                _logger.debug(f"Creating new CalDAV event for {event.name}")
+                _logger.info(f"Creating new CalDAV event for {event.name}")
                 caldav_events = event._create_in_icalendar(calendar)
                 for caldav_event in caldav_events:
                     caldav_uid = caldav_event.vobject_instance.vevent.uid.value
-                    _logger.debug(f"New CalDAV UID: {caldav_uid}")
+                    _logger.info(f"New CalDAV UID: {caldav_uid}")
                     event.with_context(caldav_no_sync=True).write(
                         {"caldav_uid": caldav_uid}
                     )
@@ -195,9 +213,7 @@ class CalendarEvent(models.Model):
         to_sync = self._to_sync()
         if to_sync and not self.env.context.get("caldav_no_sync"):
             for rec in to_sync:
-                _logger.debug(
-                    f"Updating event {rec.name} in CalDAV. " f"{rec.fields_get()}"
-                )
+                _logger.info(f"Updating event {rec.name} at {rec.start} in " f"CalDAV.")
                 rec._sync_write_to_caldav()
         return res
 
@@ -211,19 +227,32 @@ class CalendarEvent(models.Model):
             try:
                 event = self._find_in_caldav_calendar(calendar)
             except caldav.error.NotFoundError:
-                _logger.debug(
+                _logger.info(
                     f"CalDAV event {self.caldav_uid} not found on server during update."
                     f" Creating it instead."
                 )
             if event:
-                event.icalendar_component.update(ical_event_data)
                 event.save()
-            elif self.recurrence_id and not self.follow_recurrence:
-                base_event = calendar.event_by_uid(self.caldav_uid)
+            elif self.recurrence_id and not self.is_base_event:
+                base_event = self._get_caldav_base_event_by_uid(
+                    calendar, self.caldav_uid
+                )
                 base_event.icalendar_instance.add_component(Event(**ical_event_data))
+                if self.caldav_recurrence_id != self.start:
+                    tz = timezone(self.event_tz)
                 base_event.save()
             else:
-                calendar.save_event(**ical_event_data)
+                calendar.add_event(**ical_event_data)
+
+    def _get_caldav_base_event_by_uid(
+        self, calendar: caldav.Calendar, uid: str
+    ) -> Optional[CalendarEvent]:
+        for event in calendar.events():
+            comp = event.icalendar_component
+            event_uid = self._extract_component_text(comp, "uid")
+            event_recurrence_id = self._extract_component_text(comp, "recurrence-id")
+            if event_uid == uid and not event_recurrence_id:
+                return event
 
     def unlink(self):
         if not self.env.context.get("caldav_no_sync"):
@@ -231,7 +260,7 @@ class CalendarEvent(models.Model):
                 try:
                     # TODO: fix the attempt to sync all events ... _to_sync is
                     #  not working here
-                    _logger.debug(f"Removing event {rec.name} from CalDAV")
+                    _logger.info(f"Removing event {rec.name} from CalDAV")
                     rec._sync_unlink_to_caldav()
                 except Exception as e:
                     _logger.error(f"Failed to delete event from CalDAV server: {e}")
@@ -243,7 +272,7 @@ class CalendarEvent(models.Model):
                 client = user._get_caldav_client()
                 calendar = client.calendar(url=user.caldav_calendar_url)
                 try:
-                    _logger.debug(f"Removing CalDAV event {self.caldav_uid}")
+                    _logger.info(f"Removing CalDAV event {self.caldav_uid}")
                     ical_event = self._find_in_caldav_calendar(calendar)
                     if ical_event:
                         ical_event.delete()
@@ -304,17 +333,15 @@ class CalendarEvent(models.Model):
 
     def _add_event_dates(self, event_data: Dict) -> None:
         """Add pertinent dates to event data, based on self."""
-        user_tz = timezone("UTC")
-        if self.user_id.tz:
-            user_tz = timezone(self.user_id.tz)
+        event_tz = timezone(self.event_tz)
         event_data["last-modified"] = vDatetime(
-            utc.localize(self.write_date).astimezone(user_tz)
+            utc.localize(self.write_date).astimezone(event_tz)
         )
         event_data["created"] = vDatetime(
-            utc.localize(self.create_date).astimezone(user_tz)
+            utc.localize(self.create_date).astimezone(event_tz)
         )
-        event_data["dtstart"] = vDatetime(utc.localize(self.start).astimezone(user_tz))
-        event_data["dtend"] = vDatetime(utc.localize(self.stop).astimezone(user_tz))
+        event_data["dtstart"] = vDatetime(utc.localize(self.start).astimezone(event_tz))
+        event_data["dtend"] = vDatetime(utc.localize(self.stop).astimezone(event_tz))
         return event_data
 
     def _add_event_recurrence_id(self, event_data: Dict) -> None:
@@ -378,7 +405,7 @@ class CalendarEvent(models.Model):
         CalDAV server. The caldav_uid that unites events of a series needs to be
         separated, making a new uid for each base event (and its recurrences)."""
         # Start by deleting the old calendar events since we will need to remake them
-        _logger.debug(
+        _logger.info(
             f"Events {self} with CalDAV UIDs "
             f"{self.mapped('caldav_uid')} are being "
             f"detached."
@@ -407,7 +434,7 @@ class CalendarEvent(models.Model):
             recurrence_events.write({"caldav_uid": new_uid})
 
     def _break_recurrence(self, future=True):
-        _logger.debug(
+        _logger.info(
             f"Recurrence breaking for events {self} with CalDAV "
             f"UIDs {self.mapped('caldav_uid')}."
         )
