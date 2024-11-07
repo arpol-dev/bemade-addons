@@ -16,3 +16,11 @@ class RecurrenceRule(models.Model):
         default=_default_uid,
         readonly=True,
     )
+
+    def _stop_at(self, event):
+        detached_events = super()._stop_at(event)
+        detached_events._recompute_caldav_uid()
+        detached_events._recompute_caldav_recurrence_id()
+        self.calendar_event_ids._sync_recurrence_to_caldav()
+        # detached_events._sync_recurrence_to_caldav()
+        return detached_events
