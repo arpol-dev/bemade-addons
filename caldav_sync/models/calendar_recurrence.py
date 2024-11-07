@@ -8,19 +8,27 @@ _logger = logging.getLogger(__name__)
 class RecurrenceRule(models.Model):
     _inherit = "calendar.recurrence"
 
-    @api.model
-    def _default_uid(self):
-        return uuid.uuid4()
-
     caldav_uid = fields.Char(
-        default=_default_uid,
         readonly=True,
+        copy=False,
     )
+    _sql_constraints = [
+        ("caldav_uid_unique", "UNIQUE (caldav_uid)", "caldav_uid must be unique")
+    ]
 
-    def _stop_at(self, event):
-        detached_events = super()._stop_at(event)
-        detached_events._recompute_caldav_uid()
-        detached_events._recompute_caldav_recurrence_id()
-        self.calendar_event_ids._sync_recurrence_to_caldav()
-        # detached_events._sync_recurrence_to_caldav()
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            vals["caldav_uid"] = str(uuid.uuid4())
+        return super().create(vals_list)
+
+    @api.model
+    def _detach_events(self, events):
+        """When events are detached from a recurrence, their CalDAV UID and recurrence-id
+        are no longer going to be valid, so we remove them from the server. They may then
+        be re-written to the server with their new IDs later, but we don't care about
+        that here."""
+        detached_events = super()._detach_events(events)
+        for event in detached_events:
+            event._sync_unlink_to_caldav()
         return detached_events
