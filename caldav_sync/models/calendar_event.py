@@ -64,7 +64,9 @@ def _extract_vcal_email(vcal_address):
 class CalendarEvent(models.Model):
     _inherit = "calendar.event"
 
-    caldav_uid = fields.Char(string="CalDAV UID", readonly=True)
+    caldav_uid = fields.Char(
+        string="CalDAV UID", compute="_compute_caldav_uid", store=True
+    )
     # Recurrence ID in iCalendar is the date or datetime the event would have
     # been at if it followed the sequence. It is set by calendar.recurrence
     # when applying a recurrence.
@@ -83,6 +85,14 @@ class CalendarEvent(models.Model):
     ###################################
     #### Field Computation Methods ####
     ###################################
+
+    @api.depends("recurrence_id")
+    def _compute_caldav_uid(self):
+        for event in self:
+            if event.recurrence_id:
+                event.caldav_uid = event.recurrence_id.caldav_uid
+            else:
+                event.caldav_uid = uuid.uuid4()
 
     @api.depends("recurrence_id.dtstart")
     def _compute_caldav_recurrence_id(self):
@@ -173,9 +183,6 @@ class CalendarEvent(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        for vals in vals_list:
-            if not vals.get("caldav_uid"):
-                vals["caldav_uid"] = str(uuid.uuid4())
         events = super(
             CalendarEvent, self.with_context({"caldav_no_sync": True})
         ).create(vals_list)
@@ -399,47 +406,6 @@ class CalendarEvent(models.Model):
             "tentative": "TENTATIVE",
         }
         return mapping.get(state, "NEEDS-ACTION")
-
-    def _post_recurrence_detach(self):
-        """After events are detached from a recurrence, we need to split them up on the
-        CalDAV server. The caldav_uid that unites events of a series needs to be
-        separated, making a new uid for each base event (and its recurrences)."""
-        # Start by deleting the old calendar events since we will need to remake them
-        _logger.info(
-            f"Events {self} with CalDAV UIDs "
-            f"{self.mapped('caldav_uid')} are being "
-            f"detached."
-        )
-        for event in self:
-            for user in event.caldav_user_ids:
-                calendar = user._get_caldav_client().calendar(
-                    url=user.caldav_calendar_url
-                )
-                try:
-                    caldav_event = event._find_in_caldav_calendar(
-                        calendar, force_recurrence_id=True
-                    )
-                    if caldav_event:
-                        caldav_event.delete()
-                except caldav.error.NotFoundError:
-                    pass
-
-        base_events = self.filtered("is_base_event")
-        # Assign a new UID for each base event and its recurrences
-        for event in base_events:
-            recurrence_events = (
-                event.recurrence_id and event.recurrence_id.calendar_event_ids | event
-            )
-            new_uid = str(uuid.uuid4())
-            recurrence_events.write({"caldav_uid": new_uid})
-
-    def _break_recurrence(self, future=True):
-        _logger.info(
-            f"Recurrence breaking for events {self} with CalDAV "
-            f"UIDs {self.mapped('caldav_uid')}."
-        )
-        super()._break_recurrence(future)
-        self._post_recurrence_detach()
 
     def _find_in_caldav_calendar(
         self, calendar: caldav.Calendar, force_recurrence_id: bool = False

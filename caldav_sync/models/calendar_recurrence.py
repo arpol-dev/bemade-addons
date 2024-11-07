@@ -1,11 +1,18 @@
 from odoo import models, fields, api
-from pytz import timezone, utc
+import uuid
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class RecurrenceRule(models.Model):
     _inherit = "calendar.recurrence"
 
-    def _detach_events(self, events):
-        events = super()._detach_events(events)
-        events.with_context(dont_notify=True)._post_recurrence_detach()
-        return events
+    @api.model
+    def _default_uid(self):
+        return uuid.uuid4()
+
+    caldav_uid = fields.Char(
+        default=_default_uid,
+        readonly=True,
+    )
