@@ -51,6 +51,8 @@ def _parse_rrule_string(rrule_str):
                 parts[1] = datetime.strptime(parts[1], "%Y%m%dT%H%M%S")
             else:
                 parts[1] = datetime.strptime(parts[1], "%Y%m%d")
+        if parts[0].upper() == "BYDAY":
+            parts[1] = [part for part in parts[1].split(",")]
         params_dict.update({parts[0]: try_to_int(parts[1])})
     return params_dict
 
