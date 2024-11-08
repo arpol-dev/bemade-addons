@@ -18,8 +18,13 @@ class RecurrenceRule(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        for vals in vals_list:
-            vals["caldav_uid"] = str(uuid.uuid4())
+        if not self._context.get("caldav_keep_ids"):
+            for vals in vals_list:
+                vals["caldav_uid"] = str(uuid.uuid4())
+        else:
+            for vals in vals_list:
+                base_event = self.env["calendar.event"].browse(vals["base_event_id"])
+                vals.update(caldav_uid=base_event.caldav_uid)
         return super().create(vals_list)
 
     @api.model

@@ -102,7 +102,8 @@ class CalendarEvent(models.Model):
                     time.second,
                 )
             else:
-                event.caldav_uid = uuid.uuid4()
+                if not self._context.get("caldav_keep_ids"):
+                    event.caldav_uid = uuid.uuid4()
                 event.caldav_recurrence_id = False
 
     @api.depends("name", "description", "partner_ids", "location", "videocall_location")
@@ -143,7 +144,7 @@ class CalendarEvent(models.Model):
                 )
             )
 
-    @api.depends("recurrency", "recurrence_id.base_event_id")
+    @api.depends("recurrency", "recurrence_id", "recurrence_id.base_event_id")
     def _compute_is_base_event(self):
         for rec in self:
             rec.is_base_event = (
@@ -177,11 +178,9 @@ class CalendarEvent(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        events = super(
-            CalendarEvent, self.with_context({"caldav_no_sync": True})
-        ).create(vals_list)
         ctx = {"caldav_no_sync": True}
-        events.with_context(ctx)._recompute_caldav_ids()
+        events = super(CalendarEvent, self.with_context(**ctx)).create(vals_list)
+        events.with_context(**ctx)._recompute_caldav_ids()
         if not self.env.context.get("caldav_no_sync"):
             events._to_sync()._sync_create_to_caldav()
         return events
@@ -202,9 +201,7 @@ class CalendarEvent(models.Model):
                     _logger.error(f"Failed to sync event to CalDAV server: {e}")
 
     def write(self, vals):
-        res = super(CalendarEvent, self.with_context({"caldav_no_sync": True})).write(
-            vals
-        )
+        res = super(CalendarEvent, self.with_context(caldav_no_sync=True)).write(vals)
         # Events sometimes get archived in Odoo in the process of updating recurrence
         # In that case, we will delete them from the CalDAV server before recreating
         if "active" in vals and not vals.get("active"):
@@ -229,7 +226,7 @@ class CalendarEvent(models.Model):
                 start = utc.localize(self.start).astimezone(tz)
                 # We have an event in the recurrence chain that differs from the base
                 # We need to add an iCalendar VEVENT with recurrence-id or update it
-                if self.is_base_event and start == self._get_ical_recurrence_id():
+                if self.is_base_event:
                     # We have a normal base event, so we just update it or create it
                     self._update_base_caldav_event(
                         calendar, base_event, ical_event_data
@@ -274,6 +271,8 @@ class CalendarEvent(models.Model):
     def _update_ical_event_values(
         self, ical_event: icalendar.cal.Event, event_data: dict
     ):
+        sequence = (seq := ical_event.get("sequence") or 0) + 1
+        event_data.update(sequence=sequence)
         for key, value in event_data.items():
             ical_event[key] = value
 
@@ -307,13 +306,14 @@ class CalendarEvent(models.Model):
                 return index
 
     def _sync_unlink_to_caldav(self):
+        delete_all = self._context.get("caldav_delete_all", False)
         if self.caldav_uid:
             for user in self.caldav_user_ids:
                 client = user._get_caldav_client()
                 calendar = client.calendar(url=user.caldav_calendar_url)
                 try:
                     caldav_event = calendar.event_by_uid(self.caldav_uid)
-                    if self.recurrence_id and not self.is_base_event:
+                    if not delete_all and self.recurrence_id and not self.is_base_event:
                         index = self._get_subcomponent_index_for_recurrence(
                             caldav_event
                         )
@@ -325,7 +325,7 @@ class CalendarEvent(models.Model):
                         # they can be base events but have an old caldav_uid from when
                         # they were recurring. That's why we make sure that the start
                         # of the event matches.
-                        if self._matches_caldav_start(caldav_event):
+                        if delete_all or self._matches_caldav_start(caldav_event):
                             caldav_event.delete()
                 except caldav.error.NotFoundError:
                     # No worries - it just didn't exist so nothing to sync
@@ -350,10 +350,16 @@ class CalendarEvent(models.Model):
         We do, however, need to get a new caldav_uid and caldav_recurrence_id for all
         the events in the new chain.
         """
+        ctx = {"keep_caldav_ids": False}
         old_base = self.recurrence_id.base_event_id
-        super()._update_future_events(values, time_values, recurrence_values)
+        super().with_context(**ctx)._update_future_events(
+            values, time_values, recurrence_values
+        )
         events_to_refresh = self.recurrence_id._get_events_from(self.start)
-        events_to_refresh._recompute_caldav_ids()
+        # Future events are archived but not this one. We need to remove the old version
+        # from the calendar if it existed.
+        self._sync_unlink_to_caldav()
+        events_to_refresh.with_context(**ctx)._recompute_caldav_ids()
         self._sync_write_to_caldav()
         old_base._sync_write_to_caldav()
 
@@ -368,6 +374,24 @@ class CalendarEvent(models.Model):
             # When future=True, the base event needs to re-sync its recurrence values
             recurrence.base_event_id._sync_write_to_caldav()
         return detached_events - self
+
+    def _rewrite_recurrence(self, values, time_values, recurrence_values):
+        """
+        When _rewrite_recurrence is called, it archives all the events in the
+        recurrence but only after messing with the recurrence_id. This breaks our check
+        on is_base_event, so we preemptively sync the deletion here.
+
+        Because this method is usually called with caldav_no_sync=True in the context
+        to avoid looping, we manually call _sync_write_to_caldav once the operation is
+        completed.
+        """
+        for event in self.recurrence_id.calendar_event_ids:
+            event.with_context(caldav_delete_all=True)._sync_unlink_to_caldav()
+        res = super()._rewrite_recurrence(values, time_values, recurrence_values)
+        for event in self.recurrence_id.calendar_event_ids:
+            event._recompute_caldav_ids()
+        self._sync_write_to_caldav()
+        return res
 
     def _to_sync(self):
         """Determine which records in self we need to synchronize with the
@@ -406,7 +430,13 @@ class CalendarEvent(models.Model):
         return event_data
 
     def _add_event_header_info(self, event_data: Dict) -> None:
-        """Add event header info to a dict containing event data."""
+        """Add event header info to a dict containing event data.
+
+        IMPORTANT: the VEVENT sequence is set to 0. It should be changed if this method
+        is used to update an existing event!
+
+        :param event_data: The dictionary of event data to be updated with header info.
+        """
         event_data["uid"] = vText(self.caldav_uid)
         if self.name:
             event_data["summary"] = vText(self.name)
@@ -417,6 +447,7 @@ class CalendarEvent(models.Model):
             event_data["location"] = vText(self.location)
         if self.videocall_location:
             event_data["conference"] = self.videocall_location
+        event_data["sequence"] = 0
 
     def _add_event_dates(self, event_data: Dict) -> None:
         """Add pertinent dates to event data, based on self."""
@@ -564,9 +595,9 @@ class CalendarEvent(models.Model):
                 if not recurrency_vals.get("follow_recurrence"):
                     recurrency_vals = {}
 
-                new_event = self.with_context(caldav_no_sync=True).create(
-                    values | recurrency_vals
-                )
+                new_event = self.with_context(
+                    caldav_no_sync=True, caldav_keep_ids=True
+                ).create(values | recurrency_vals)
                 self.env["calendar.event"].flush_model()
                 if new_event.recurrency:
                     synced_events |= new_event.recurrence_id.calendar_event_ids
@@ -582,6 +613,7 @@ class CalendarEvent(models.Model):
                 if changed_vals:
                     existing_instance.with_context(
                         caldav_no_sync=True,
+                        caldav_keep_ids=True,
                     ).write(changed_vals)
 
             if existing_instance.recurrency and existing_instance.is_base_event:
@@ -773,14 +805,13 @@ class CalendarEvent(models.Model):
         :return: True if the iCalendar component is outdated, False otherwise.
         """
         outdated = False
-        last_modified = component.get("last-modified")
+        last_modified = component.get("dtstamp") and component.get("dtstamp").dt
         if (
             existing_instance
             and last_modified
             and existing_instance not in synced_events
         ):
-            last_modified = last_modified.dt.astimezone(utc).replace(tzinfo=None)
-            if last_modified < existing_instance.write_date:
+            if last_modified < utc.localize(existing_instance.write_date):
                 outdated = True
         return outdated
 
