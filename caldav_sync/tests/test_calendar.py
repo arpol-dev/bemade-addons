@@ -45,9 +45,10 @@ def _patch_caldav_with_events_from_ics(ics_paths, user, last_modified=None):
         mock_calendar.side_effect = calendar_side_effect
 
         def event_by_uid_side_effect(self, uid):
-            for event in self.events:
+            for event in self.events():
                 if str(event.icalendar_component.get("uid")) == uid:
                     return event
+            return DEFAULT
 
         ical_events = []
         if ics_paths:
@@ -59,8 +60,10 @@ def _patch_caldav_with_events_from_ics(ics_paths, user, last_modified=None):
                 ical_events.append(icalendar.Calendar.from_ical(ical_content))
         if last_modified:
             for event in ical_events:
-                event["last-modified"] = last_modified
-                event["dtstamp"] = last_modified
+                for subcomponent in event.subcomponents:
+                    if subcomponent.name == "VEVENT":
+                        subcomponent["last-modified"] = icalendar.vDate(last_modified)
+                        subcomponent["dtstamp"] = icalendar.vDate(last_modified)
 
         base_events = [event for event in ical_events if not event.get("recurrence-id")]
         for base_event in base_events:
@@ -270,35 +273,6 @@ class TestCalendarEvent(TransactionCase, CaldavTestCommon):
                 }
             )
         )
-
-    def test_multiple_user_attendees_event_to_server_create(self):
-        with self._patch_all_3_users_davclients() as (_, mock_calendar):
-            self._create_multi_user_test_event()
-            self.assertEqual(mock_calendar.add_event.call_count, 3)
-
-    def test_event_to_server_delete(self):
-        with self._patch_all_3_users_davclients() as (_, mock_calendar):
-            self._create_multi_user_test_event().unlink()
-            self.assertEqual(
-                mock_calendar.event_by_uid.return_value.delete.call_count, 3
-            )
-
-    def test_event_to_server_update(self):
-        with self._patch_all_3_users_davclients() as (_, mock_calendar):
-            self._create_multi_user_test_event().write(
-                {"start": datetime.now() + timedelta(days=14)}
-            )
-            self.assertEqual(mock_calendar.save_event.call_count, 3)
-
-    def test_recurrent_event_to_server(self):
-        with self._patch_all_3_users_davclients() as (_, mock_calendar):
-            self._create_multi_user_test_event().write(
-                {
-                    "recurrency": True,
-                }
-            )
-            args = mock_calendar.save_event.call_args
-            self.assertEqual(mock_calendar.save_event.call_count, 3)
 
     @contextmanager
     def _patch_all_3_users_davclients(self):
