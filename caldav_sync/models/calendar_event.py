@@ -539,7 +539,8 @@ class CalendarEvent(models.Model):
         :param user: The res.user record for whom to synchronize events.
         """
         _logger.info(f"Polling CalDAV server for user {user.name}")
-        events = user._get_caldav_events()
+        calendar = user._get_caldav_client().calendar(url=user.caldav_calendar_url)
+        events = calendar.events()
         synced_events = self.env["calendar.event"]
         for caldav_event in events:
             ical_event = caldav_event.icalendar_instance
@@ -556,7 +557,27 @@ class CalendarEvent(models.Model):
         )
         orphaned_events = orphaned_events._to_sync()
         if orphaned_events:
-            orphaned_events.with_context(caldav_no_sync=True).with_user(user).unlink()
+            base_orphans = orphaned_events.filtered(
+                lambda ev: ev.recurrence_id and ev.is_base_event
+            )
+            for base_orphan in base_orphans:
+                try:
+                    if calendar.event_by_uid(base_orphan.caldav_uid):
+                        # There are some events remaining in this recurrence series,
+                        # so we have synchronized them individually.
+                        pass
+                except caldav.error.NotFoundError:
+                    # There are no more events with this UID, so we need to clear
+                    # out the whole recurrence chain from the Odoo side.
+                    ctx = {"caldav_no_sync": True}
+                    recurrence = base_orphan.recurrence_id
+                    recurrence.calendar_event_ids.with_context(**ctx).with_user(
+                        user
+                    ).unlink()
+                    recurrence.with_context(**ctx).with_user(user).unlink()
+            (orphaned_events - base_orphans).with_context(
+                caldav_no_sync=True
+            ).with_user(user).unlink()
 
     @api.model
     def _sync_event_from_ical(
