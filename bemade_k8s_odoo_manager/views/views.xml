@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Include all view files -->
+    <data>
+        <!-- This is a placeholder file that includes all other view files -->
+    </data>
+</odoo>

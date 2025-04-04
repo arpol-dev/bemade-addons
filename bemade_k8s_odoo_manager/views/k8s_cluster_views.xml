@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree View -->
+    <record id="view_k8s_cluster_tree" model="ir.ui.view">
+        <field name="name">k8s.cluster.tree</field>
+        <field name="model">k8s.cluster</field>
+        <field name="arch" type="xml">
+            <tree string="Kubernetes Clusters">
+                <field name="name"/>
+                <field name="api_url"/>
+                <field name="kubeconfig_attachment_id"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_k8s_cluster_form" model="ir.ui.view">
+        <field name="name">k8s.cluster.form</field>
+        <field name="model">k8s.cluster</field>
+        <field name="arch" type="xml">
+            <form string="Kubernetes Cluster">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_test_connection" type="object" class="oe_stat_button" icon="fa-check-circle">
+                            <span>Test Connection</span>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Cluster Name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="api_url"/>
+                            <field name="namespace"/>
+                            <field name="default_tls_issuer"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="kubeconfig_attachment_id" options="{'no_create': True}"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Instances">
+                            <field name="instance_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="namespace"/>
+                                    <field name="image"/>
+                                    <field name="status"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Notes">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_k8s_cluster_search" model="ir.ui.view">
+        <field name="name">k8s.cluster.search</field>
+        <field name="model">k8s.cluster</field>
+        <field name="arch" type="xml">
+            <search string="Search Kubernetes Clusters">
+                <field name="name"/>
+                <field name="api_url"/>
+                <separator/>
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Active" name="group_by_active" context="{'group_by': 'active'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_k8s_cluster" model="ir.actions.act_window">
+        <field name="name">Kubernetes Clusters</field>
+        <field name="res_model">k8s.cluster</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_k8s_cluster_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new Kubernetes cluster
+            </p>
+            <p>
+                Define Kubernetes clusters to connect to for managing Odoo instances.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Items -->
+    <menuitem id="menu_k8s_odoo_manager_root" name="K8s Odoo Manager" web_icon="bemade_k8s_odoo_manager,static/description/icon.png" sequence="90"/>
+
+    <menuitem id="menu_k8s_cluster" name="Kubernetes Clusters" parent="menu_k8s_odoo_manager_root" action="action_k8s_cluster" sequence="10"/>
+</odoo>

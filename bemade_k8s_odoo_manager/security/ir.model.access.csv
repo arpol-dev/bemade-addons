@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_k8s_cluster_admin,k8s.cluster admin,model_k8s_cluster,bemade_k8s_odoo_manager.group_k8s_odoo_manager_admin,1,1,1,1
+access_k8s_cluster_user,k8s.cluster user,model_k8s_cluster,bemade_k8s_odoo_manager.group_k8s_odoo_manager_user,1,0,0,0
+access_k8s_odoo_instance_admin,k8s.odoo.instance admin,model_k8s_odoo_instance,bemade_k8s_odoo_manager.group_k8s_odoo_manager_admin,1,1,1,1
+access_k8s_odoo_instance_user,k8s.odoo.instance user,model_k8s_odoo_instance,bemade_k8s_odoo_manager.group_k8s_odoo_manager_user,1,0,0,0
+
