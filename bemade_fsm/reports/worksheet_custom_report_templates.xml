@@ -361,13 +361,17 @@
         t-if="doc.planned_date_begin or doc.date_deadline"
       >
                 <div t-if="doc.planned_date_begin"><h6>Planned start: </h6></div>
-                <div class="mb-3">
-                    <div t-out="doc.planned_date_begin.strftime('%Y-%m-%d %H:%M')" />
-                </div>
-                <div t-if="doc.date_deadline"><h6>Planned end: </h6></div>
-                <div class="mb-3">
-                    <div t-out="doc.date_deadline.strftime('%Y-%m-%d %H:%M')" />
-                </div>
+<div class="mb-3">
+    <div>
+        <span t-esc="doc.planned_date_begin_est and doc.planned_date_begin_est.strftime('%Y-%m-%d %H:%M')" />
+    </div>
+</div>
+<div t-if="doc.date_deadline"><h6>Planned end: </h6></div>
+<div class="mb-3">
+    <div>
+        <span t-esc="doc.date_deadline_est and doc.date_deadline_est.strftime('%Y-%m-%d %H:%M')" />
+    </div>
+</div>
             </div>
         </div>
         <div class="row" name="site_and_work_order_contacts">

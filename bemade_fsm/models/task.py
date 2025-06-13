@@ -3,9 +3,30 @@ from odoo.addons.project.models.project_task import CLOSED_STATES
 import re
 
 
+import pytz
+
 class Task(models.Model):
     _inherit = ["project.task", "durpro.tag.inheritance.mixin"]
     _name = "project.task"
+
+    planned_date_begin_est = fields.Datetime(compute="_compute_est_dates", string="Planned Start (EST)")
+    date_deadline_est = fields.Datetime(compute="_compute_est_dates", string="Planned End (EST)")
+
+    def _get_est_datetime(self, dt):
+        if not dt:
+            return False
+        user_tz = pytz.timezone('America/Toronto')
+        if not dt.tzinfo:
+            dt = fields.Datetime.from_string(str(dt))
+            dt = fields.Datetime.context_timestamp(self, dt)
+        dt_est = dt.astimezone(user_tz)
+        # Return naive datetime in EST (strip tzinfo)
+        return dt_est.replace(tzinfo=None)
+
+    def _compute_est_dates(self):
+        for rec in self:
+            rec.planned_date_begin_est = rec._get_est_datetime(rec.planned_date_begin)
+            rec.date_deadline_est = rec._get_est_datetime(rec.date_deadline)
 
     work_order_contacts = fields.Many2many(
         comodel_name="res.partner",
