@@ -4,7 +4,8 @@ import re
 
 
 class Task(models.Model):
-    _inherit = "project.task"
+    _inherit = ["project.task", "durpro.tag.inheritance.mixin"]
+    _name = "project.task"
 
     work_order_contacts = fields.Many2many(
         comodel_name="res.partner",

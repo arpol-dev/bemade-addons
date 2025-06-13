@@ -350,7 +350,8 @@
             t-esc="doc.partner_id"
             t-options='{
                                     "widget": "contact",
-                                    "fields": ["name", "address",]
+                                    "fields": ["name", "address",],
+                                    "lang": "fr_FR"
                                 }'
           />
                 </t>
@@ -563,12 +564,9 @@
     <template id="work_order">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
-                <t t-set="doc" t-value="doc.root_ancestor" t-if="doc.parent_id" />
+                <t t-set="doc" t-value="doc.root_ancestor" t-if="doc.parent_id"/>
                 <t t-call="web.external_layout">
-                    <t
-            t-call="bemade_fsm.work_order_page"
-            t-lang="doc.partner_id.lang"
-          />
+                    <t t-call="bemade_fsm.work_order_page"/>
                 </t>
             </t>
         </t>
@@ -582,7 +580,7 @@
       expr="//t[@t-call='industry_fsm_report.worksheet_custom_page']"
       position="replace"
     >
-            <div t-call="bemade_fsm.work_order_page" />
+            <t t-call="bemade_fsm.work_order_page" t-lang="(doc.work_order_contacts and doc.work_order_contacts[0].lang) or 'en_US'"/>
         </xpath>
     </template>
 </odoo>
