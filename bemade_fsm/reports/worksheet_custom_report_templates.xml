@@ -361,17 +361,13 @@
         t-if="doc.planned_date_begin or doc.date_deadline"
       >
                 <div t-if="doc.planned_date_begin"><h6>Planned start: </h6></div>
-<div class="mb-3">
-    <div>
-        <span t-esc="doc.planned_date_begin_est and doc.planned_date_begin_est.strftime('%Y-%m-%d %H:%M')" />
-    </div>
-</div>
-<div t-if="doc.date_deadline"><h6>Planned end: </h6></div>
-<div class="mb-3">
-    <div>
-        <span t-esc="doc.date_deadline_est and doc.date_deadline_est.strftime('%Y-%m-%d %H:%M')" />
-    </div>
-</div>
+                <div class="mb-3">
+                    <div t-esc="context_timestamp(doc.planned_date_begin).strftime('%Y-%m-%d %H:%M')" />
+                </div>
+                <div t-if="doc.date_deadline"><h6>Planned end: </h6></div>
+                <div class="mb-3">
+                    <div t-out="context_timestamp(doc.date_deadline).strftime('%Y-%m-%d %H:%M')" />
+                </div>
             </div>
         </div>
         <div class="row" name="site_and_work_order_contacts">
@@ -568,7 +564,7 @@
     <template id="work_order">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
-                <t t-set="doc" t-value="doc.root_ancestor" t-if="doc.parent_id"/>
+                <t t-set="doc" t-value="doc.root_ancestor.with_context(tz=doc.partner_id.tz)" t-if="doc.parent_id"/>
                 <t t-call="web.external_layout">
                     <t t-call="bemade_fsm.work_order_page"/>
                 </t>
