@@ -374,7 +374,7 @@
             <div
         t-attf-class="{{'col-6' if report_type == 'pdf' else 'col-md-6 col-12'}}"
       >
-                <div t-if="doc.site_contacts"><h6>Site Contacts: </h6></div>
+                <div t-if="doc.site_contacts"><h6>Site Contacts:</h6></div>
                 <t t-foreach="doc.site_contacts" t-as="contact">
                     <div class="mb-3">
                         <div
@@ -390,8 +390,7 @@
             <div
         t-attf-class="{{'col-6' if report_type == 'pdf' else 'col-md-6 col-12'}}"
       >
-                <div t-if="doc.work_order_contacts"><h6>Work Order
-                    Contacts: </h6></div>
+                <div t-if="doc.work_order_contacts"><h6>Work Order Contacts:</h6></div>
                 <t t-foreach="doc.work_order_contacts" t-as="contact">
                     <div class="mb-3">
                         <div
@@ -565,8 +564,8 @@
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-set="doc" t-value="doc.root_ancestor.with_context(tz=doc.partner_id.tz)" t-if="doc.parent_id"/>
-                <t t-call="web.external_layout">
-                    <t t-call="bemade_fsm.work_order_page"/>
+                <t t-call="web.external_layout" t-lang="(doc.work_order_contacts and doc.work_order_contacts[0].lang) or 'en_US'">
+                    <t t-call="bemade_fsm.work_order_page" t-lang="(doc.work_order_contacts and doc.work_order_contacts[0].lang) or 'en_US'"/>
                 </t>
             </t>
         </t>

@@ -1068,16 +1068,18 @@ msgstr "Travaux exécutés"
 
 #. module: bemade_fsm
 #: model_terms:ir.ui.view,arch_db:bemade_fsm.workorder_page_info_block
-msgid ""
-"Work Order\n"
-"                        Contacts:"
-msgstr ""
-"Contacts recevant le bon de travail :"
+msgid "Work Order Contacts:"
+msgstr "Contact recevant le bon de travail : "
 
 #. module: bemade_fsm
-#: model:ir.model.fields,field_description:bemade_fsm.field_project_task__work_order_contacts
-msgid "Work Order Contacts"
-msgstr "Contacts recevant le bon de travail"
+#: model_terms:ir.ui.view,arch_db:bemade_fsm.work_order_page
+msgid "Phone:"
+msgstr "Téléphone:"
+
+#. module: bemade_fsm
+#: model_terms:ir.ui.view,arch_db:bemade_fsm.work_order_page
+msgid "Email:"
+msgstr "Courriel:"
 
 #. module: bemade_fsm
 #: model:ir.model.fields,field_description:bemade_fsm.field_project_task__work_order_number
