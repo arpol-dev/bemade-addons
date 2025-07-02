@@ -39,7 +39,6 @@
         "fsm_equipment",
         "bemade_partner_root_ancestor",
         "mail",
-        "durpro_tag_inheritance",
     ],
     "data": [
         "data/fsm_data.xml",
