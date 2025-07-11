@@ -49,6 +49,7 @@
         "views/menus.xml",
         "views/task_views.xml",
         "views/sale_order_views.xml",
+        "views/sale_order_template_views.xml",
         "reports/worksheet_custom_report_templates.xml",
         "reports/worksheet_custom_reports.xml",
         "wizard/new_task_from_template.xml",

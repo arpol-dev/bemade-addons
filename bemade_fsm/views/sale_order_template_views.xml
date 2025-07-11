@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="sale_order_template_view_form_fsm" model="ir.ui.view">
+        <field name="name">sale.order.template.form.fsm</field>
+        <field name="model">sale.order.template</field>
+        <field name="inherit_id" ref="sale_management.sale_order_template_view_form"/>
+        <field name="arch" type="xml">
+            <!-- Ajouter un onglet pour les champs FSM -->
+            <notebook position="inside">
+                <page string="Field Service">
+                    <group>
+                        <field name="default_equipment_ids" widget="many2many_tags"/>
+                        <field name="site_contacts" widget="many2many_tags"/>
+                        <field name="work_order_contacts" widget="many2many_tags"/>
+                    </group>
+                    <!-- Section pour les templates de visite -->
+                    <separator string="Visit Templates"/>
+                    <field name="visit_template_ids">
+                        <tree editable="bottom">
+                            <field name="name"/>
+                            <field name="so_section_template_id"/>
+                        </tree>
+                    </field>
+                </page>
+            </notebook>
+            
+            <!-- Ajouter champs équipements dans les lignes de modèle -->
+            <xpath expr="//field[@name='sale_order_template_line_ids']/tree" position="inside">
+                <field name="equipment_ids" widget="many2many_tags"/>
+                <field name="visit_template_id"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -161,3 +161,65 @@ class SaleOrder(models.Model):
             for rec in self:
                 rec.tasks_ids.write({"partner_id": rec.partner_shipping_id.id})
         return res
+
+    @api.onchange('sale_order_template_id')
+    def _onchange_fsm_sale_order_template_id(self):
+        """Ajoute le support des champs FSM lors de l'utilisation d'un modèle de devis.
+        Cette méthode est appelée après le traitement standard du modèle de devis.
+        """
+        if not self.sale_order_template_id:
+            return
+            
+        # Vérifier si le modèle a les attributs FSM (pour éviter les erreurs si module non installé)
+        if hasattr(self.sale_order_template_id, 'is_fsm') and self.sale_order_template_id.is_fsm:
+            # Copier les contacts du modèle de devis
+            if hasattr(self.sale_order_template_id, 'site_contacts'):
+                self.site_contacts = self.sale_order_template_id.site_contacts
+                
+            if hasattr(self.sale_order_template_id, 'work_order_contacts'):
+                self.work_order_contacts = self.sale_order_template_id.work_order_contacts
+            
+            # Copier les équipements par défaut du modèle
+            if hasattr(self.sale_order_template_id, 'default_equipment_ids') and self.sale_order_template_id.default_equipment_ids:
+                self.default_equipment_ids = self.sale_order_template_id.default_equipment_ids
+            
+            # Traiter les templates de visite après que toutes les lignes ont été créées
+            self._process_fsm_visit_templates()
+        
+    def _process_fsm_visit_templates(self):
+        """Créer des visites à partir des templates de visite du modèle de devis."""
+        if not self.sale_order_template_id or not hasattr(self.sale_order_template_id, 'visit_template_ids'):
+            return
+            
+        for visit_template in self.sale_order_template_id.visit_template_ids:
+            # Créer une nouvelle visite pour chaque template
+            visit = self.env["bemade_fsm.visit"].create({
+                "label": visit_template.name,
+                "sale_order_id": self.id,
+            })
+            
+            # Dans le contexte d'un modèle de commande, nous devons associer les lignes aux visites
+            # d'une façon différente, puisque le lien direct entre les lignes de commande 
+            # et les lignes de modèle n'est pas disponible
+            
+            # Si nous avons une section définie dans le template, nous associons la visite
+            # à la première section correspondante de la commande
+            if visit_template.so_section_template_id:
+                # Trouver une ligne de section avec un nom similaire
+                for line in self.order_line.filtered(lambda l: l.display_type == 'line_section'):
+                    if line.name == visit_template.so_section_template_id.name:
+                        visit.so_section_id = line
+                        break
+                        
+            # Pour les produits, associer au mieux les équipements par correspondance
+            # avec le nom ou la description des produits
+            for line in self.order_line.filtered(lambda l: not l.display_type):
+                # Associer les lignes à la visite si c'est pertinent
+                # La logique exacte dépendra de l'implémentation de votre système
+                if visit.so_section_id and line.sequence > visit.so_section_id.sequence:
+                    # Si la ligne suit la section de la visite, l'associer à cette visite
+                    line.visit_id = visit.id
+                    
+                    # Appliquer les équipements du modèle de devis par défaut
+                    if self.default_equipment_ids:
+                        line.equipment_ids = self.default_equipment_ids

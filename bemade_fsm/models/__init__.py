@@ -2,6 +2,7 @@ from . import task_template
 from . import product_template
 from . import sale_order_line
 from . import sale_order
+from . import sale_order_template
 from . import task
 from . import res_partner
 from . import fsm_visit

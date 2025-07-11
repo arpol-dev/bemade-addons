@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Menu items -->
+    <menuitem id="menu_mail_message_ai_suggestion"
+              name="Suggestions IA"
+              parent="mail_manual_routing.menu_lost_messages"
+              action="action_mail_message_ai_suggestion"
+              sequence="20"
+              groups="mail_manual_routing.group_lost_messages"/>
+</odoo>

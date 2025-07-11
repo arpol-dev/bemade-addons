@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Extend mail.message form view -->
+    <record id="mail_message_view_form_ai_enhanced" model="ir.ui.view">
+        <field name="name">mail.message.form.ai.enhanced</field>
+        <field name="model">mail.message</field>
+        <field name="inherit_id" ref="mail_manual_routing.mail_message_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button string="Analyser avec IA" 
+                        name="action_analyze_with_ai" 
+                        type="object" 
+                        class="btn-primary"
+                        attrs="{'invisible': ['|', ('is_unattached', '=', False), ('ai_analyzed', '=', True)]}"/>
+            </xpath>
+            <xpath expr="//field[@name='lost_comments']" position="after">
+                <field name="ai_analyzed" invisible="1"/>
+                <field name="ai_suggestion_count" invisible="1"/>
+                <field name="ai_top_suggestion_id" invisible="1"/>
+                <div class="alert alert-info" attrs="{'invisible': [('ai_suggestion_count', '=', 0)]}">
+                    <div class="d-flex align-items-center">
+                        <i class="fa fa-robot mr-2"/>
+                        <span>L'IA suggère de router ce message vers : </span>
+                        <field name="ai_top_suggestion_id" readonly="1" options="{'no_open': True}"/>
+                        <button string="Appliquer" 
+                                name="action_apply_ai_suggestion" 
+                                type="object" 
+                                class="btn btn-sm btn-primary ml-2"
+                                attrs="{'invisible': [('ai_top_suggestion_id', '=', False)]}"/>
+                        <button string="Voir toutes les suggestions" 
+                                name="action_view_ai_suggestions" 
+                                type="object" 
+                                class="btn btn-sm btn-secondary ml-2"
+                                attrs="{'invisible': [('ai_suggestion_count', '=', 0)]}"/>
+                    </div>
+                    <div attrs="{'invisible': [('ai_top_suggestion_id', '=', False)]}">
+                        <field name="ai_top_suggestion_id.suggestion_reason" readonly="1" class="text-muted"/>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Extend mail.message tree view -->
+    <record id="mail_message_view_tree_ai_enhanced" model="ir.ui.view">
+        <field name="name">mail.message.tree.ai.enhanced</field>
+        <field name="model">mail.message</field>
+        <field name="inherit_id" ref="mail_manual_routing.mail_message_view_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='is_unattached']" position="after">
+                <field name="ai_analyzed"/>
+                <field name="ai_suggestion_count"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Extend mail.message search view -->
+    <record id="mail_message_view_search_ai_enhanced" model="ir.ui.view">
+        <field name="name">mail.message.search.ai.enhanced</field>
+        <field name="model">mail.message</field>
+        <field name="inherit_id" ref="mail_manual_routing.mail_message_view_search"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[@name='unattached']" position="after">
+                <filter string="Analysés par IA" name="ai_analyzed" domain="[('ai_analyzed', '=', True)]"/>
+                <filter string="Non analysés par IA" name="not_ai_analyzed" domain="[('is_unattached', '=', True), ('ai_analyzed', '=', False)]"/>
+                <filter string="Avec suggestions" name="with_suggestions" domain="[('ai_suggestion_count', '>', 0)]"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

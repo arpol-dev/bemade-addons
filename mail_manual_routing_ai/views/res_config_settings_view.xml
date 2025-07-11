@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_ai_enhanced" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.ai.enhanced</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@id='lost_messages_settings']" position="after">
+                <h2>Paramètres d'IA pour les messages perdus</h2>
+                <div class="row mt16 o_settings_container" id="ai_lost_messages_settings">
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="ai_auto_analyze_enabled"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="ai_auto_analyze_enabled"/>
+                            <div class="text-muted">
+                                Analyser automatiquement les messages perdus avec l'IA
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="ai_auto_routing_enabled"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="ai_auto_routing_enabled"/>
+                            <div class="text-muted">
+                                Router automatiquement les messages selon les suggestions de l'IA
+                            </div>
+                            <div class="content-group" attrs="{'invisible': [('ai_auto_routing_enabled', '=', False)]}">
+                                <div class="mt16">
+                                    <label for="ai_auto_routing_threshold" class="o_light_label"/>
+                                    <field name="ai_auto_routing_threshold" class="oe_inline" widget="percentage"/>
+                                </div>
+                                <div class="text-muted">
+                                    Score de confiance minimum pour le routage automatique
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="ai_learning_enabled"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="ai_learning_enabled"/>
+                            <div class="text-muted">
+                                Utiliser les retours utilisateurs pour améliorer les futures suggestions
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_right_pane">
+                            <label for="ai_models_allowed"/>
+                            <field name="ai_models_allowed" placeholder="sale.order,project.project,res.partner"/>
+                            <div class="text-muted">
+                                Liste de modèles séparés par des virgules autorisés pour le routage IA
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <h2>Intégration OpenWebUI</h2>
+                <div class="row mt16 o_settings_container" id="openwebui_settings">
+                    <div class="col-12 col-lg-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="ai_use_openwebui"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="ai_use_openwebui"/>
+                            <div class="text-muted">
+                                Utiliser OpenWebUI pour l'analyse des messages au lieu de l'analyseur standard
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box" attrs="{'invisible': [('ai_use_openwebui', '=', False)]}">
+                        <div class="o_setting_right_pane">
+                            <label for="ai_openwebui_endpoint"/>
+                            <field name="ai_openwebui_endpoint" placeholder="http://localhost:3000/api/chat"/>
+                            <div class="text-muted">
+                                URL de l'API OpenWebUI pour l'analyse des messages
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box" attrs="{'invisible': [('ai_use_openwebui', '=', False)]}">
+                        <div class="o_setting_right_pane">
+                            <label for="ai_openwebui_api_key"/>
+                            <field name="ai_openwebui_api_key" password="True"/>
+                            <div class="text-muted">
+                                Clé API pour l'authentification avec OpenWebUI
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-6 o_setting_box" attrs="{'invisible': [('ai_use_openwebui', '=', False)]}">
+                        <div class="o_setting_right_pane">
+                            <label for="ai_responsible_user_id"/>
+                            <field name="ai_responsible_user_id"/>
+                            <div class="text-muted">
+                                Utilisateur qui recevra les activités pour les messages perdus analysés
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>
