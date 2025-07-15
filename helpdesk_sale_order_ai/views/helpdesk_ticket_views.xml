@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="helpdesk_ticket_form_view_inherit_ai" model="ir.ui.view">
+        <field name="name">helpdesk.ticket.form.view.inherit.ai</field>
+        <field name="model">helpdesk.ticket</field>
+        <field name="inherit_id" ref="helpdesk.helpdesk_ticket_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='team_id']" position="after">
+                <field name="team_use_sale_orders" invisible="1"/>
+                <field name="team_use_ai_sale_orders" invisible="1"/>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="AI Suggestions" invisible="not team_use_ai_sale_orders">
+                    <group>
+                        <field name="ai_generated_products" widget="text" readonly="1"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

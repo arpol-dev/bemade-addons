@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- AI Prompt Template Form View -->
+    <record id="view_helpdesk_ai_prompt_template_form" model="ir.ui.view">
+        <field name="name">openwebui.prompt.template.form</field>
+        <field name="model">openwebui.prompt.template</field>
+        <field name="arch" type="xml">
+            <form string="AI Prompt Template">
+                <field name="template_type" invisible="1"/>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="set_as_default" type="object" 
+                                class="oe_stat_button" icon="fa-star"
+                                invisible="is_default">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Set as Default</span>
+                            </div>
+                        </button>
+                        <button name="set_as_default" type="object" 
+                                class="oe_stat_button" icon="fa-star" disabled="1"
+                                invisible="not is_default">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Default Template</span>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Template Name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="sequence" groups="base.group_no_one"/>
+                            <field name="active" widget="boolean_toggle"/>
+                            <field name="is_default" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Template Content" name="template_content">
+                            <div class="text-muted mb-3">
+                                Use placeholders like {description}, {customer}, etc. to include ticket information in the prompt.
+                            </div>
+                            <field name="content" widget="text" class="oe_edit_only" style="min-height: 300px;"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- AI Prompt Template List View -->
+    <record id="view_helpdesk_ai_prompt_template_list" model="ir.ui.view">
+        <field name="name">openwebui.prompt.template.list</field>
+        <field name="model">openwebui.prompt.template</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="template_type" invisible="1"/>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="is_default" string="Default"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- AI Prompt Template Search View -->
+    <record id="view_helpdesk_ai_prompt_template_search" model="ir.ui.view">
+        <field name="name">openwebui.prompt.template.search</field>
+        <field name="model">openwebui.prompt.template</field>
+        <field name="arch" type="xml">
+            <search string="Search AI Prompt Templates">
+                <field name="template_type" invisible="1"/>
+                <field name="name"/>
+                <filter string="Default" name="default" domain="[('is_default', '=', True)]"/>
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- AI Prompt Template Action -->
+    <record id="action_helpdesk_ai_prompt_template" model="ir.actions.act_window">
+        <field name="name">AI Prompt Templates</field>
+        <field name="res_model">openwebui.prompt.template</field>
+        <field name="domain">[('template_type', '=', 'helpdesk')]</field>
+        <field name="context">{'default_template_type': 'helpdesk'}</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new AI prompt template
+            </p>
+            <p>
+                Define templates for AI prompts used in helpdesk tickets.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item -->
+    <menuitem id="menu_helpdesk_ai_prompt_template"
+              name="AI Prompt Templates"
+              parent="helpdesk.helpdesk_menu_config"
+              action="action_helpdesk_ai_prompt_template"
+              sequence="50"/>
+</odoo>

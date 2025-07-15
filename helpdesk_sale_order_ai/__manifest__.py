@@ -16,12 +16,16 @@
     'maintainer': 'it@bemade.org',
     'depends': [
         'helpdesk_sale_order',
-        'openai_connector',  # Supposant qu'un module de connexion OpenAI existe
+        'openwebui_connector',
     ],
     'data': [
+        'security/ir.model.access.csv',
         'views/helpdesk_team_views.xml',
         'views/helpdesk_ticket_views.xml',
+        'views/res_config_settings_views.xml',
+        'views/ai_prompt_template_views.xml',
     ],
     'installable': True,
     'application': False,
+    'post_init_hook': 'post_init_hook',
 }

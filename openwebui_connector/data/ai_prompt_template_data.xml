@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default Helpdesk AI Prompt Template -->
+        <record id="default_helpdesk_prompt_template" model="openwebui.prompt.template">
+            <field name="name">Default Helpdesk Template</field>
+            <field name="template_type">helpdesk</field>
+            <field name="is_default" eval="True"/>
+            <field name="sequence">10</field>
+            <field name="active" eval="True"/>
+            <field name="content">You are a helpful AI assistant for Bemade. Your task is to analyze a helpdesk ticket and suggest products or services that should be included in a sales order.
+
+TICKET INFORMATION:
+Customer: {customer}
+Subject: {subject}
+Description: {description}
+
+Based on the ticket information above, please suggest products or services that should be included in a sales order. Format your response as a list of products with quantities. If possible, match to existing products in our catalog.
+
+For each product suggestion, include:
+1. Product name
+2. Quantity
+3. Brief justification for including this item
+
+Format your response as follows:
+```
+PRODUCT SUGGESTIONS:
+- 2x Product Name: Justification
+- 1x Another Product: Justification
+```
+
+If you need more information to make accurate suggestions, please indicate what information is missing.</field>
+        </record>
+
+        <!-- Default General AI Prompt Template -->
+        <record id="default_general_prompt_template" model="openwebui.prompt.template">
+            <field name="name">Default General Template</field>
+            <field name="template_type">general</field>
+            <field name="is_default" eval="True"/>
+            <field name="sequence">20</field>
+            <field name="active" eval="True"/>
+            <field name="content">You are a helpful AI assistant for Bemade. Please analyze the following content and provide a concise and helpful response:
+
+{content}
+
+Please provide a clear and professional response.</field>
+        </record>
+    </data>
+</odoo>

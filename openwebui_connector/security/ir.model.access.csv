@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_openwebui_prompt_template_user,openwebui.prompt.template.user,model_openwebui_prompt_template,base.group_user,1,0,0,0
+access_openwebui_prompt_template_admin,openwebui.prompt.template.admin,model_openwebui_prompt_template,base.group_system,1,1,1,1
+access_openwebui_client_user,openwebui.client.user,model_openwebui_client,base.group_user,1,0,0,0
+access_openwebui_client_admin,openwebui.client.admin,model_openwebui_client,base.group_system,1,1,1,1

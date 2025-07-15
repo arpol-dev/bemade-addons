@@ -5,9 +5,9 @@
         <field name="model">helpdesk.team</field>
         <field name="inherit_id" ref="helpdesk.helpdesk_team_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='team_use_sale_orders']" position="after">
-                <field name="use_ai_sale_orders" attrs="{'invisible': [('team_use_sale_orders', '=', False)]}"/>
-                <field name="ai_prompt_template" attrs="{'invisible': [('use_ai_sale_orders', '=', False)]}" widget="text_field"/>
+            <xpath expr="//field[@name='use_sale_orders']" position="after">
+                <field name="use_ai_sale_orders" invisible="not use_sale_orders"/>
+                <field name="ai_prompt_template_id" invisible="not use_ai_sale_orders"/>
             </xpath>
         </field>
     </record>
