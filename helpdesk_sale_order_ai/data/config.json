@@ -1,7 +1,0 @@
-{
-    "OpenWebUI": {
-        "api_key": "",
-        "base_url": "https://ai.bemade.org/api",
-        "model": "anthropic.claude-3-7-sonnet-latest"
-    }
-}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="helpdesk_ticket_form_view_inherit_ai_button" model="ir.ui.view">
+        <field name="name">helpdesk.ticket.form.view.inherit.ai.button</field>
+        <field name="model">helpdesk.ticket</field>
+        <field name="inherit_id" ref="helpdesk_sale_order.helpdesk_ticket_form_view_inherit_saleorder"/>
+        <field name="arch" type="xml">
+            <!-- Update the Convert to Quotation button to be visible when either team_use_sale_orders OR team_use_ai_sale_orders is True -->
+            <xpath expr="//button[@name='action_convert_to_sale_order']" position="attributes">
+                <attribute name="invisible">not team_use_sale_orders and not team_use_ai_sale_orders</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

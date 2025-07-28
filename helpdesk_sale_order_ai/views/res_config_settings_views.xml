@@ -1,16 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- We need to make the field available in the form without adding UI elements -->
+    <!-- Add the hidden field to the base settings form -->
     <record id="res_config_settings_view_form_inherit_helpdesk_sale_order_ai" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.inherit.helpdesk.sale.order.ai</field>
         <field name="model">res.config.settings</field>
         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
         <field name="arch" type="xml">
-            <!-- In Odoo 18, we add fields to the form directly -->
-            <form position="inside">
-                <!-- Hidden field that will be used by the settings logic -->
+            <!-- Add the hidden field at the root level of the form -->
+            <field name="company_id" position="after">
                 <field name="helpdesk_ai_prompt_template_id" invisible="1"/>
-            </form>
+            </field>
         </field>
     </record>
 </odoo>

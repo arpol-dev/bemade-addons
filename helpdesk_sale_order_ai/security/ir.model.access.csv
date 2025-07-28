@@ -1,3 +1,3 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_openwebui_prompt_template_helpdesk_user,openwebui.prompt.template.helpdesk.user,openwebui_connector.model_openwebui_prompt_template,helpdesk.group_helpdesk_user,1,0,0,0
-access_openwebui_prompt_template_helpdesk_manager,openwebui.prompt.template.helpdesk.manager,openwebui_connector.model_openwebui_prompt_template,helpdesk.group_helpdesk_manager,1,1,1,1
+access_ai_openwebui_prompt_template_helpdesk_user,ai.openwebui.prompt.template.helpdesk.user,openwebui_base.model_openwebui_prompt_template,helpdesk.group_helpdesk_user,1,0,0,0
+access_ai_openwebui_prompt_template_helpdesk_manager,ai.openwebui.prompt.template.helpdesk.manager,openwebui_base.model_openwebui_prompt_template,helpdesk.group_helpdesk_manager,1,1,1,1

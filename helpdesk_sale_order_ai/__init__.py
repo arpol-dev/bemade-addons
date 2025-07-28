@@ -28,7 +28,8 @@ def post_init_hook(cr, registry=None):
             return
             
         _logger.info("Calling _ensure_default_template")
-        env['openwebui.prompt.template']._ensure_default_template('helpdesk')
+        # Use our bridge model which will call the correct underlying model
+        env['ai.openwebui.prompt.template']._ensure_default_template('helpdesk')
         _logger.info("Default template ensured successfully")
         _logger.info("=== END: post_init_hook ====")
     except Exception as e:
