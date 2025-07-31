@@ -61,11 +61,6 @@ class HelpdeskTicket(models.Model):
             if field in values and values[field] == '':
                 values[field] = None
 
-        # Extract unfound products before creating the sale order
-        unfound_products = []
-        if 'unfound_products' in values:
-            unfound_products = values.pop('unfound_products')
-            _logger.debug(f"Found {len(unfound_products)} unfound products")
 
         # Create the sale order
         sale_order = self.env['sale.order'].create(values)
@@ -76,9 +71,7 @@ class HelpdeskTicket(models.Model):
         # Post original email contents and document information to the chatter
         self._post_source_information_message(sale_order)
         
-        # Post message about unfound products if any
-        if unfound_products:
-            self._post_unfound_products_message(sale_order, unfound_products)
+
 
         return {
             'type': 'ir.actions.act_window',
@@ -169,63 +162,7 @@ class HelpdeskTicket(models.Model):
         except Exception as e:
             _logger.error(f"Error posting source information message: {e}")
     
-    def _post_unfound_products_message(self, sale_order, unfound_products):
-        """
-        Post a chatter message on the sale order with information about unfound products.
-        This message will be deleted when the sale order is confirmed.
-        
-        Args:
-            sale_order: The sale order record
-            unfound_products: List of dictionaries with unfound product information
-        """
-        if not unfound_products:
-            return
-            
-        # Count unfound products
-        missing_count = len(unfound_products)
-        
-        # Create the message content
-        message_body = f"""<p><strong>⚠️ {missing_count} product(s) could not be found in the database:</strong></p>
-<ul>
-"""
-        
-        # Add each unfound product to the message
-        for product in unfound_products:
-            name = product.get('name', 'Unknown')
-            quantity = product.get('quantity', 'Unknown')
-            reference = product.get('reference', '')
-            description = product.get('description', '')
-            
-            product_info = f"<li><strong>{name}</strong>"
-            if reference:
-                product_info += f" (Ref: {reference})"
-            if quantity != 'Unknown':
-                product_info += f" - Quantity: {quantity}"
-            product_info += "</li>"
-            
-            # Add description as a separate indented paragraph with better formatting
-            if description:
-                product_info += f"""<ul><li style="list-style-type: none; margin-left: -20px;"><em>Description: {description}</em></li></ul>"""
-            
-            message_body += product_info
-            
-        message_body += """</ul>
-<p><em>This message will be automatically deleted when the sale order is confirmed.</em></p>
-<!-- MISSING_PRODUCTS_MESSAGE -->"""  # Special marker for deletion
-        
-        try:
-            # Post the message
-            sale_order.message_post(body=message_body, subject="Products Not Found", body_is_html=True)
-            
-            # Update the sale order flags
-            sale_order.write({
-                'missing_product_count': missing_count,
-                'has_missing_products': True
-            })
-            
-            _logger.debug(f"Posted unfound products message for sale order {sale_order.id} with {missing_count} products")
-        except Exception as e:
-            _logger.error(f"Error posting unfound products message: {e}")
+
     
     def _get_sale_order_values(self) -> dict:
         """
@@ -260,191 +197,39 @@ class HelpdeskTicket(models.Model):
         ai_client = provider.get_client()
         
         # Register the product finding methods as tools
-        registry = ai_client.tool_registry
+        # STEP 1: Extract potential products from ticket content and attachments
+        _logger.debug("Step 1: Extracting potential products from ticket content and attachments")
+        potential_products = self._ai_extract_potential_products(ticket_data)
+        _logger.debug(f"Step 1 result - Potential products: {potential_products}")
         
-        registry.register(
-            self._ai_find_product_id_by_name, 
-            non_ai_params=["self"],
-            description="Find a product by its name and return its ID. Input: name (string) - The name of the product to find. Returns the product ID if found, or null if not found."
-        )
-        registry.register(
-            self._ai_find_product_id_by_code, 
-            non_ai_params=["self"],
-            description="Find a product by its code/reference and return its ID. Input: code (string) - The code/reference of the product to find. Returns the product ID if found, or null if not found."
-        )
-        
-        # Process PDF attachments for analysis
-        attachments_list = []
-        attachments = self.env['ir.attachment'].search([('res_id', '=', self.id), ('res_model', '=', self._name)])
-        
-        for attachment in attachments:
-            if attachment.mimetype == 'application/pdf':
-                try:
-                    temp_path = f"/tmp/{attachment.name}"
-                    shutil.copy(attachment._full_path(attachment.store_fname), temp_path)
-                    attachments_list.append(Path(temp_path))
-                except Exception as e:
-                    _logger.error(f"Error processing attachment {attachment.name}: {e}")
-        
-        # Create the prompt for the AI
-        prompt = f"""IMPORTANT: YOU ARE NOT A CONVERSATIONAL ASSISTANT. YOU ARE A DATA EXTRACTION SYSTEM.
-        
-        Your ONLY function is to analyze the provided content and return a structured JSON object so that later it can be used to create a sales order.
-        DO NOT introduce yourself, explain what you can or cannot do, or engage in conversation.
-        ONLY RETURN THE REQUESTED JSON DATA STRUCTURE.
-        
-        TASK: Extract product information and sales order details from the following content:
-        
-        Customer Request:
-        {description}
-        
-        Chatter Messages (IMPORTANT - CAREFULLY ANALYZE THESE FOR PRODUCT INFORMATION):
-        {chatter_messages}
-        
-        Attachments Information:
-        {attachments_info}
-        
-        Attachment Contents (CRITICALLY IMPORTANT - ANALYZE PDF CONTENTS FOR ALL PRODUCT DETAILS):
-        {attachment_contents}
-        
-        WORKFLOW - FOLLOW THESE STEPS EXACTLY:
-        1. Identify ONLY ACTUAL PRODUCTS mentioned in the content (product names, codes, references) from BOTH chatter messages AND PDF attachments
-        2. For EACH product identified (from BOTH sources):
-           a. If you find a product code/reference, call _ai_find_product_id_by_code with that code
-           b. If you only have a product name, call _ai_find_product_id_by_name with that name
-           c. If the product is not found in the database, use the display_type: 'line_note' format with this EXACT format: "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)"
-        3. Extract order details (client reference, dates, notes)
-        4. Construct the JSON response using the product IDs you obtained from tool calls
-        
-        RESPONSE FORMAT:
-        Your response MUST ONLY be a valid JSON object with the following structure:
-        
-        {{
-            "client_order_ref": "Customer PO number if mentioned",
-            "date_order": "YYYY-MM-DD format if a specific order date is mentioned",
-            "commitment_date": "YYYY-MM-DD format if a delivery date is mentioned",
-            "note": "Any special instructions or notes for the order",
-            "order_line": [
-                [0, 0, {{
-                    "product_id": NUMERIC_ID_FROM_TOOL_CALL,  // Must be an actual ID returned from a tool call
-                    "product_uom_qty": QUANTITY,
-                    "price_unit": PRICE
-                }}],
-                [0, 0, {{
-                    "display_type": "line_note",
-                    "name": "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE)",
-                    "product_uom_qty": 0.0
-                }}]
-            ],
-            "unfound_products": [  // IMPORTANT: Include this array with any products that could not be found in the database
-                {{
-                    "name": "Product name",
-                    "quantity": QUANTITY,
-                    "reference": "REFERENCE if available",
-                    "description": "Additional description if available"
-                }}
-            ]
-        }}
-        
-        CRITICAL RULES FOR IDENTIFYING PRODUCTS:
-        1. A product MUST have AT LEAST ONE of the following to be considered a valid product:
-           - A quantity AND a price
-           - A specific product code/reference
-           - A clearly identifiable product name with quantity
-        2. DO NOT identify random descriptions, paragraphs, or sections of text as products
-        3. Be aware that some items may have very long descriptions - this doesn't make them separate products
-        4. If a product contains subproducts (e.g., a kit or bundle), only identify the MAIN product, not each subproduct
-        5. If uncertain whether something is a product or just a description, look for quantity and price indicators
-        6. VERY IMPORTANT: Read product descriptions carefully as they often contain critical information to help identify the correct product
-        7. For unfound products, capture as much of the description as possible - this helps users identify what the product actually is
-        
-        CRITICAL RULES FOR RESPONSE:
-        1. You MUST use the provided tools for EVERY valid product mentioned in BOTH chatter messages AND PDF attachments
-        2. product_id MUST be a numeric ID returned by a tool call, NEVER make up IDs
-        3. For products not found in the database, use the display_type: 'line_note' format with this EXACT format: "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)"
-        4. Include as much detail as possible for unmatched products including quantity, reference, and description if available
-        5. Return ONLY valid JSON with no text before or after
-        6. DO NOT explain what you're doing or respond conversationally
-        7. DO NOT say you can't create a sales order - your job is ONLY to return the JSON data
-        IMPORTANT: You must invoke the tools directly using function calling, not just output text that looks like a tool call. Use the provided tools via function calling for _ai_find_product_id_by_code and _ai_find_product_id_by_name.
-        """
-        
-        
-        # Call the AI with tools
-        try:
-            _logger.debug("Sending request to AI for sales order generation")
-            # First, get the AI's analysis with tool calls to find product IDs
-            response = ai_client.chat_with_tools(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a data extraction system with access to tools for finding product IDs in an Odoo database. YOU MUST USE THE TOOLS PROVIDED TO ACCURATELY MATCH PRODUCTS PROVIDED TO THE DATABASE. Your ONLY job is to extract product information and return a structured JSON object. DO NOT engage in conversation or explain what you can or cannot do. ONLY return the requested JSON data structure. CRITICALLY IMPORTANT: You MUST identify ONLY ACTUAL PRODUCTS mentioned in BOTH chatter messages AND PDF attachments. A valid product MUST have a quantity AND either a price or product code. DO NOT identify random descriptions or paragraphs as products. VERY IMPORTANT: Read product descriptions carefully as they often contain critical information to help identify the correct product. For ANY product that cannot be found in the database, you MUST include it as a line note with display_type: 'line_note' in your response, and include as much description as possible."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                tools=["_ai_find_product_id_by_name", "_ai_find_product_id_by_code"],
-                tool_params={},
-                max_tool_calls=25,
-                files=attachments_list
-            )
-            _logger.debug(f"Received AI response for ticket {self.id}")
-            
-        except Exception as e:
-            _logger.error(f"Error in AI request: {e}")
-            import traceback
-            _logger.error(f"Traceback: {traceback.format_exc()}")
+        # If no potential products found, return empty order
+        if not potential_products:
+            _logger.warning("No potential products found in ticket content")
             return {
                 "order_line": [],
-                "note": f"AI Error: {str(e)}"
+                "note": "No products identified in ticket content"
             }
         
-        # Process the AI response
-        _logger.debug(f"AI response type: {type(response)}")
+        # STEP 2: Match extracted products to database products using tools
+        _logger.debug("Step 2: Matching extracted products to database products")
+        matched_products = self._ai_match_products_to_database(potential_products)
+        _logger.debug(f"Step 2 result - Matched products: {matched_products}")
         
-        # If it's a dictionary, use it directly
-        if isinstance(response, dict):
-            _logger.debug("AI returned dictionary response, using directly")
-            response['unfound_products'] = self._extract_unfound_products(response)
-            return response
+        # If no matched products, return empty order
+        if not matched_products:
+            _logger.warning("No products could be matched to database")
+            return {
+                "order_line": [],
+                "note": "No products could be matched to database"
+            }
         
-        # Handle string responses (extract JSON if possible)
-        if isinstance(response, str):
-            _logger.debug("AI returned text response, attempting to extract JSON")
-            try:
-                # Look for JSON pattern in the text
-                json_pattern = r'```(?:json)?\s*({[\s\S]*?})\s*```'
-                json_matches = re.findall(json_pattern, response)
-                
-                if json_matches:
-                    response_data = json.loads(json_matches[0])
-                    response_data['unfound_products'] = self._extract_unfound_products(response_data)
-                    return response_data
-                elif response.strip().startswith('{') and response.strip().endswith('}'): 
-                    response_data = json.loads(response.strip())
-                    response_data['unfound_products'] = self._extract_unfound_products(response_data)
-                    return response_data
-                else:
-                    _logger.error("Could not extract JSON from text response")
-                    return {
-                        "order_line": [],
-                        "note": f"AI returned invalid format: {response[:200]}..."
-                    }
-            except Exception as parse_error:
-                _logger.error(f"Failed to extract JSON from text response: {parse_error}")
-                return {
-                    "order_line": [],
-                    "note": f"AI parsing error: {str(parse_error)}"
-                }
+        # STEP 3: Format the matched products into final JSON structure
+        _logger.debug("Step 3: Formatting matched products into final sales order structure")
+        final_order = self._ai_format_final_sale_order(matched_products, ticket_data)
+        _logger.debug(f"Step 3 result - Final order: {final_order}")
         
-        # If we get here, the response is in an unexpected format
-        _logger.error(f"Unexpected response format: {type(response)}")
-        return {
-            "order_line": [],
-            "note": f"AI returned unexpected format: {type(response)}"
-        }
+        # Return the final formatted sales order
+        return final_order
         
     def _prepare_ai_prompt_data(self):
         """
@@ -496,6 +281,9 @@ class HelpdeskTicket(models.Model):
             # Add PDF content reference
             if attachment.mimetype == 'application/pdf':
                 attachment_contents.append(f"IMPORTANT PDF CONTENT: {attachment.name} - The AI must analyze this PDF for ALL product mentions and include ANY products found as either matched products or unmatched line notes")
+            # Add text file content reference
+            elif attachment.mimetype == 'text/plain':
+                attachment_contents.append(f"IMPORTANT TEXT CONTENT: {attachment.name} - The AI must analyze this text file for ALL product mentions and include ANY products found as either matched products or unmatched line notes")
         
         result['attachments_info'] = '\n'.join(attachment_infos)
         result['attachment_contents'] = '\n\n'.join(attachment_contents)
@@ -538,85 +326,516 @@ class HelpdeskTicket(models.Model):
             ('sale_ok', '=', True)
         ], limit=1).id
     
-    def _extract_unfound_products(self, response_data):
+    def _ai_extract_potential_products(self, ticket_data: dict) -> list:
         """
-        Extract information about products that could not be found in the database.
-        This method analyzes the AI response to identify products that couldn't be matched.
+        First AI call: Extract potential products from ticket content and attachments.
+        Only this step will have access to the files/attachments.
         
         Args:
-            response_data: The AI response data (dictionary)
+            ticket_data (dict): Dictionary containing ticket description, messages, and attachment info
             
         Returns:
-            List of dictionaries with information about unfound products
+            list: List of potential products identified by the AI
         """
-        unfound_products = []
+        self.ensure_one()
+        _logger.debug("Starting Step 1: Extracting potential products")
         
-        # Check if response has data
-        if not response_data:
-            return unfound_products
+        description = ticket_data.get('ticket_description', '')
+        chatter_messages = ticket_data.get('ticket_messages', '')
+        attachments_info = ticket_data.get('attachments_info', '')
+        attachment_contents = ticket_data.get('attachment_contents', '')
+        
+        # Log the content being analyzed
+        _logger.debug(f"AI Analysis - Content lengths: Description={len(description)}, Chatter={len(chatter_messages)}, Attachments={len(attachment_contents)}")
+        
+        # Get the OpenWebUI provider from company settings
+        company = self.env.company
+        provider = company.openwebui_provider_id
+        
+        if not provider:
+            _logger.error("No OpenWebUI provider configured for company")
+            return []
             
-        # First check if there's a dedicated unfound_products array in the response
-        if 'unfound_products' in response_data and isinstance(response_data['unfound_products'], list):
-            _logger.debug(f"Found unfound_products array in AI response with {len(response_data['unfound_products'])} items")
-            for product in response_data['unfound_products']:
-                if isinstance(product, dict):
-                    product_info = {}
-                    
-                    # Extract product information from the unfound_products array
-                    if 'name' in product:
-                        product_info['name'] = product['name']
-                    
-                    if 'quantity' in product:
-                        product_info['quantity'] = float(product['quantity'])
-                    
-                    if 'reference' in product:
-                        product_info['reference'] = product['reference']
-                        
-                    if product_info and 'name' in product_info:
-                        unfound_products.append(product_info)
+        # Get the OpenWebUI client from the provider
+        ai_client = provider.get_client()
         
-        # Also check for line notes in the order lines (for backward compatibility)
-        if 'order_line' in response_data:
-            for line in response_data.get('order_line', []):
-                # Line format is typically [0, 0, {...}]
-                if len(line) >= 3 and isinstance(line[2], dict):
-                    line_data = line[2]
-                    
-                    # Check if this is a line note for an unfound product
-                    if line_data.get('display_type') == 'line_note' and 'name' in line_data:
-                        name = line_data.get('name', '')
-                        
-                        # Extract product information from the note
-                        if 'Unmatched product:' in name or 'Product not found:' in name:
-                            # Parse the product information
-                            product_info = {}
-                            
-                            # Try to extract product name
-                            product_name_match = re.search(r'(?:Unmatched product:|Product not found:)\s*([^\(\)\[\],]+)', name)
-                            if product_name_match:
-                                product_info['name'] = product_name_match.group(1).strip()
-                            else:
-                                product_info['name'] = name.replace('Unmatched product:', '').replace('Product not found:', '').strip()
-                            
-                            # Try to extract quantity
-                            quantity_match = re.search(r'(?:qty|quantity|Qty|Quantity)[:\s]*(\d+(?:\.\d+)?)', name)
-                            if quantity_match:
-                                product_info['quantity'] = float(quantity_match.group(1))
-                            
-                            # Try to extract reference/code
-                            ref_match = re.search(r'(?:ref|reference|code)[:\s]*([\w-]+)', name, re.IGNORECASE)
-                            if ref_match:
-                                product_info['reference'] = ref_match.group(1)
-                        
-                            # Any remaining text is considered description
-                            if 'description' not in product_info:
-                                product_info['description'] = ''
-                            product_info['description'] += ' ' + name if product_info['description'] else name
-                            
-                            # Add to the list of unfound products
-                            if product_info:
-                                unfound_products.append(product_info)
+        # Process PDF and text attachments for analysis
+        attachments_list = []
+        attachments = self.env['ir.attachment'].search([('res_id', '=', self.id), ('res_model', '=', self._name)])
         
-        # Return the extracted unfound products
-        _logger.debug(f"Extracted {len(unfound_products)} unfound products from AI response")
-        return unfound_products
+        # Upload PDF and text attachments to OpenWebUI
+        uploaded_files = []
+        for attachment in attachments:
+            if attachment.mimetype in ['application/pdf', 'text/plain']:
+                try:
+                    temp_path = Path(f"/tmp/{attachment.name}")
+                    shutil.copy(attachment._full_path(attachment.store_fname), str(temp_path))
+                    # Upload the file to OpenWebUI and get a FileObject with id
+                    file_object = ai_client.files.from_path(temp_path)
+                    uploaded_files.append(file_object)
+                    # Clean up temporary file
+                    temp_path.unlink(missing_ok=True)
+                except Exception as e:
+                    _logger.error(f"Error processing attachment {attachment.name}: {e}")
+                    import traceback
+                    _logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Create the prompt for the AI to extract potential products
+        prompt = f"""IMPORTANT: YOU ARE NOT A CONVERSATIONAL ASSISTANT. YOU ARE A DATA EXTRACTION SYSTEM.
+        
+        Your ONLY function is to analyze the provided content and return a list of potential products.
+        DO NOT introduce yourself, explain what you can or cannot do, or engage in conversation.
+        ONLY RETURN THE REQUESTED JSON DATA STRUCTURE.
+        
+        TASK: Extract ALL potential products mentioned in the following content:
+        
+        Customer Request:
+        {description}
+        
+        Chatter Messages (IMPORTANT - CAREFULLY ANALYZE THESE FOR PRODUCT INFORMATION):
+        {chatter_messages}
+        
+        Attachments Information:
+        {attachments_info}
+        
+        Attachment Contents (CRITICALLY IMPORTANT - ANALYZE PDF AND TEXT CONTENTS FOR ALL PRODUCT DETAILS):
+        {attachment_contents}
+        
+        WORKFLOW - FOLLOW THESE STEPS EXACTLY:
+        1. Identify ALL potential products mentioned in the content (product names, codes, references) from BOTH chatter messages AND attachments
+        2. For EACH potential product identified:
+           a. Extract the product name
+           b. Extract the product's default code
+           c. Extract any quantity information
+           d. Extract any price information
+           e. Extract any additional description
+        3. Return a structured JSON list of all potential products
+        
+        RESPONSE FORMAT:
+        Your response MUST ONLY be a valid JSON array with the following structure:
+        
+        [
+            {{
+                "name": "Product name",
+                "default_code": "Product default code",
+                "quantity": "Quantity if mentioned (number or text)",
+                "price": "Price if mentioned"
+            }},
+            ...
+        ]
+        
+        CRITICAL RULES FOR IDENTIFYING PRODUCTS:
+        1. A potential product is ANYTHING that could be a product - be liberal in identification
+        2. If a product's default code is explicitly mentioned (often in brackets or as a standalone identifier), put it in the "default_code" field
+        3. If only a product name is mentioned, put it in the "name" field
+        4. DO NOT include descriptions in the "name" field - only use actual product names or references
+        5. DO NOT include a "description" field - it's not needed for product matching
+        6. DO NOT filter or validate products at this stage - that will happen later
+        7. Return ONLY valid JSON with no text before or after
+        8. DO NOT explain what you're doing or respond conversationally
+        
+        IMPORTANT: Include EVERYTHING that might be a product, even if uncertain.
+        """
+        
+        # Call the AI to extract potential products
+        try:
+            _logger.debug("Sending request to AI for product extraction")
+            response = ai_client.chat.completions.create(
+                model=provider.default_model_id.technical_name if provider.default_model_id else None,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a data extraction system. Your ONLY job is to extract ALL potential products mentioned in the provided content and return them in a structured JSON format. Be liberal in identifying potential products - include anything that might be a product."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                stream=False,
+                files=uploaded_files
+            )
+            _logger.debug(f"Received AI response for product extraction")
+            
+        except Exception as e:
+            _logger.error(f"Error in AI product extraction request: {e}")
+            import traceback
+            _logger.error(f"Traceback: {traceback.format_exc()}")
+            return []
+        
+        # Process the AI response
+        _logger.debug(f"AI product extraction response type: {type(response)}")
+        
+        # Add detailed logging of the response content
+        try:
+            response_content = response.choices[0].message.content if hasattr(response, 'choices') else str(response)
+            _logger.debug(f"AI product extraction response content: {response_content[:1000]}...")
+        except:
+            _logger.debug("Could not serialize AI product extraction response for logging")
+        
+        # Extract the content from the response
+        response_content = response.choices[0].message.content if hasattr(response, 'choices') else str(response)
+        
+        # Handle string responses (extract JSON if possible)
+        if isinstance(response_content, str):
+            _logger.debug("AI returned text response, attempting to extract JSON")
+            try:
+                # Look for JSON pattern in the text
+                json_pattern = r'```(?:json)?\s*(\[[\s\S]*?\]|{[\s\S]*?})\s*```'
+                json_matches = re.findall(json_pattern, response_content)
+                
+                if json_matches:
+                    response_data = json.loads(json_matches[0])
+                    return response_data if isinstance(response_data, list) else [response_data]
+                elif response_content.strip().startswith('[') and response_content.strip().endswith(']'): 
+                    response_data = json.loads(response_content.strip())
+                    return response_data if isinstance(response_data, list) else [response_data]
+                elif response_content.strip().startswith('{') and response_content.strip().endswith('}'): 
+                    response_data = json.loads(response_content.strip())
+                    return [response_data]
+                else:
+                    _logger.error("Could not extract JSON from text response")
+                    return []
+            except Exception as parse_error:
+                _logger.error(f"Failed to extract JSON from text response: {parse_error}")
+                return []
+        
+        # If we get here, the response is in an unexpected format
+        _logger.error(f"Unexpected response format: {type(response_content)}")
+        return []
+    
+    def _ai_match_products_to_database(self, potential_products: list) -> list:
+        """
+        Second AI call: Match extracted products to database products using tools.
+        This step will not have access to files/attachments.
+        
+        Args:
+            potential_products (list): List of potential products from the first step
+            
+        Returns:
+            list: List of matched products with database IDs or unmatched product notes
+        """
+        self.ensure_one()
+        _logger.debug("Starting Step 2: Matching products to database")
+        _logger.debug(f"Input products to match: {potential_products}")
+        
+        # Get the OpenWebUI provider from company settings
+        company = self.env.company
+        provider = company.openwebui_provider_id
+        
+        if not provider:
+            _logger.error("No OpenWebUI provider configured for company")
+            return []
+            
+        # Get the OpenWebUI client from the provider
+        ai_client = provider.get_client()
+        
+        # Register the product finding methods as tools
+        registry = ai_client.tool_registry
+        
+        registry.register(
+            self._ai_find_product_id_by_name, 
+            non_ai_params=["self"],
+            description="Find a product by its name and return its ID. Input: name (string) - The name of the product to find. Returns the product ID if found, or null if not found."
+        )
+        registry.register(
+            self._ai_find_product_id_by_code, 
+            non_ai_params=["self"],
+            description="Find a product by its code/reference and return its ID. Input: code (string) - The code/reference of the product to find. Returns the product ID if found, or null if not found."
+        )
+        
+        # Create the prompt for the AI to match products
+        products_json = json.dumps(potential_products, indent=2)
+        
+        prompt = f"""IMPORTANT: YOU ARE NOT A CONVERSATIONAL ASSISTANT. YOU ARE A DATA PROCESSING SYSTEM.
+        
+        Your ONLY function is to match the provided potential products to actual database products using the available tools.
+        DO NOT introduce yourself, explain what you can or cannot do, or engage in conversation.
+        ONLY RETURN THE REQUESTED JSON DATA STRUCTURE.
+        
+        TASK: Match the following potential products to actual database products:
+        
+        Potential Products:
+        {products_json}
+        
+        WORKFLOW - FOLLOW THESE STEPS EXACTLY: 
+        1. For EACH potential product:
+           a. If the product has a code/reference, call _ai_find_product_id_by_code with that code
+           b. If the product has a name, call _ai_find_product_id_by_name with that name
+           c. If the product is not found in the database, create a line note entry
+        2. Return a structured JSON list of matched products and line notes
+        
+        RESPONSE FORMAT:
+        Your response MUST ONLY be a valid JSON array with the following structure:
+        
+        [
+            {{
+                "product_id": NUMERIC_ID_FROM_TOOL_CALL,  // Must be an actual ID returned from a tool call
+                "product_uom_qty": QUANTITY,
+                "price_unit": PRICE,
+                "name": "Product name (for reference)"
+            }},
+            {{
+                "display_type": "line_note",
+                "name": "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)",
+                "product_uom_qty": 0.0
+            }},
+            ...
+        ]
+        
+        CRITICAL RULES FOR MATCHING:
+        1. You MUST use the provided tools for EVERY potential product
+        2. product_id MUST be a numeric ID returned by a tool call, NEVER make up IDs
+        3. For products not found in the database, use the display_type: 'line_note' format with this EXACT format: "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)"
+        4. Include as much detail as possible for unmatched products including quantity, reference, and description if available
+        5. Return ONLY valid JSON with no text before or after
+        6. DO NOT explain what you're doing or respond conversationally
+        
+        IMPORTANT: You must invoke the tools directly using function calling, not just output text that looks like a tool call.
+        """
+        
+        # Call the AI with tools to match products
+        try:
+            _logger.debug("Sending request to AI for product matching")
+            response = ai_client.chat_with_tools(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a data processing system with access to tools for finding product IDs in an Odoo database. Your ONLY job is to match the provided potential products to actual database products using the available tools. For ANY product that cannot be found in the database, you MUST include it as a line note with display_type: 'line_note' in your response."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                tools=["_ai_find_product_id_by_name", "_ai_find_product_id_by_code"],
+                tool_params={},
+                max_tool_calls=25
+            )
+            _logger.debug(f"Received AI response for product matching")
+            
+        except Exception as e:
+            _logger.error(f"Error in AI product matching request: {e}")
+            import traceback
+            _logger.error(f"Traceback: {traceback.format_exc()}")
+            return []
+        
+        # Process the AI response
+        _logger.debug(f"AI product matching response type: {type(response)}")
+        
+        # Add detailed logging of the response content
+        try:
+            _logger.debug(f"AI product matching response content: {json.dumps(response, indent=2)[:1000]}...")
+        except:
+            _logger.debug("Could not serialize AI product matching response for logging")
+        
+        # If it's a dictionary, use it directly
+        if isinstance(response, dict):
+            _logger.debug("AI returned dictionary response, using directly")
+            # Check if it's a single object that should be in a list
+            if 'product_id' in response or 'display_type' in response:
+                return [response]
+            return response
+        
+        # Handle string responses (extract JSON if possible)
+        if isinstance(response, str):
+            _logger.debug("AI returned text response, attempting to extract JSON")
+            try:
+                # Look for JSON pattern in the text
+                json_pattern = r'```(?:json)?\s*(\[[\s\S]*?\]|{[\s\S]*?})\s*```'
+                json_matches = re.findall(json_pattern, response)
+                
+                if json_matches:
+                    response_data = json.loads(json_matches[0])
+                    return response_data if isinstance(response_data, list) else [response_data]
+                if response.strip().startswith('[') and response.strip().endswith(']'): 
+                    response_data = json.loads(response.strip())
+                    return [response_data]
+                elif response.strip().startswith('{') and response.strip().endswith('}'): 
+                    response_data = json.loads(response.strip())
+                    return [response_data]
+                else:
+                    _logger.error("Could not extract JSON from text response")
+                    return []
+            except Exception as parse_error:
+                _logger.error(f"Failed to extract JSON from text response: {parse_error}")
+                return []
+        
+        # If it's already a list, return it
+        if isinstance(response, list):
+            return response
+        
+        # If we get here, the response is in an unexpected format
+        _logger.error(f"Unexpected response format: {type(response)}")
+        return []
+    
+    def _ai_format_final_sale_order(self, matched_products: list, ticket_data: dict) -> dict:
+        """
+        Third AI call: Format the matched products into final JSON structure.
+        This step will not have access to files/attachments.
+        
+        Args:
+            matched_products (list): List of matched products from the second step
+            ticket_data (dict): Original ticket data for extracting order details
+            
+        Returns:
+            dict: Final sales order values in the required format
+        """
+        self.ensure_one()
+        _logger.debug("Starting Step 3: Formatting final sales order")
+        _logger.debug(f"Input matched products: {matched_products}")
+        
+        # Get the OpenWebUI provider from company settings
+        company = self.env.company
+        provider = company.openwebui_provider_id
+        
+        if not provider:
+            _logger.error("No OpenWebUI provider configured for company")
+            return {"order_line": []}
+            
+        # Get the OpenWebUI client from the provider
+        ai_client = provider.get_client()
+        
+        # Create the prompt for the AI to format the final sales order
+        matched_products_json = json.dumps(matched_products, indent=2)
+        description = ticket_data.get('ticket_description', '')
+        chatter_messages = ticket_data.get('ticket_messages', '')
+        
+        prompt = f"""IMPORTANT: YOU ARE NOT A CONVERSATIONAL ASSISTANT. YOU ARE A DATA FORMATTING SYSTEM.
+        
+        Your ONLY function is to format the provided matched products into a structured sales order JSON.
+        DO NOT introduce yourself, explain what you can or cannot do, or engage in conversation.
+        ONLY RETURN THE REQUESTED JSON DATA STRUCTURE.
+        
+        TASK: Format the following matched products into a complete sales order structure:
+        
+        Matched Products:
+        {matched_products_json}
+        
+        Additional Context:
+        Customer Request:
+        {description}
+        
+        Chatter Messages:
+        {chatter_messages}
+        
+        WORKFLOW - FOLLOW THESE STEPS EXACTLY:
+        1. Extract order details (client reference, dates, notes) from the context
+        2. Format the matched products into the required sales order line structure
+        3. Construct the complete JSON response
+        
+        RESPONSE FORMAT:
+        Your response MUST ONLY be a valid JSON object with the following structure:
+        
+        {{
+            "client_order_ref": "Customer PO number if mentioned",
+            "date_order": "YYYY-MM-DD format if a specific order date is mentioned",
+            "commitment_date": "YYYY-MM-DD format if a delivery date is mentioned",
+            "note": "Any special instructions or notes for the order",
+            "order_line": [
+                [0, 0, {{
+                    "product_id": NUMERIC_ID_FROM_TOOL_CALL,
+                    "product_uom_qty": QUANTITY,
+                    "price_unit": PRICE
+                }}],
+                [0, 0, {{
+                    "display_type": "line_note",
+                    "name": "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)",
+                    "product_uom_qty": 0.0
+                }}],
+                ...
+            ]
+        }}
+        
+        CRITICAL RULES FOR FORMATTING:
+        1. The order_line array MUST contain arrays in the format [0, 0, {{...}}]
+        2. Matched products with product_id should be formatted as [0, 0, {{"product_id": ID, "product_uom_qty": QTY, "price_unit": PRICE}}]
+        3. Unmatched products with display_type should be formatted as [0, 0, {{"display_type": "line_note", "name": "...", "product_uom_qty": 0.0}}]
+        4. Extract any client reference, dates, or notes from the context
+        5. Return ONLY valid JSON with no text before or after
+        6. DO NOT explain what you're doing or respond conversationally
+        
+        IMPORTANT: Ensure the final structure matches exactly what's required for Odoo sales order creation.
+        """
+        
+        # Call the AI to format the final sales order
+        try:
+            _logger.debug("Sending request to AI for final sales order formatting")
+            response = ai_client.chat.completions.create(
+                model=provider.default_model_id.technical_name if provider.default_model_id else None,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a data formatting system. Your ONLY job is to format the provided matched products into a structured sales order JSON that matches exactly what's required for Odoo sales order creation."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                stream=False
+            )
+            _logger.debug(f"Received AI response for final sales order formatting")
+            
+        except Exception as e:
+            _logger.error(f"Error in AI final formatting request: {e}")
+            import traceback
+            _logger.error(f"Traceback: {traceback.format_exc()}")
+            return {
+                "order_line": [],
+                "note": f"AI Error: {str(e)}"
+            }
+        
+        # Process the AI response
+        _logger.debug(f"AI final formatting response type: {type(response)}")
+        
+        # Add detailed logging of the response content
+        try:
+            response_content = response.choices[0].message.content if hasattr(response, 'choices') else str(response)
+            _logger.debug(f"AI final formatting response content: {response_content[:1000]}...")
+        except:
+            _logger.debug("Could not serialize AI final formatting response for logging")
+        
+        # Extract the content from the response
+        response_content = response.choices[0].message.content if hasattr(response, 'choices') else str(response)
+        
+        # Handle string responses (extract JSON if possible)
+        if isinstance(response_content, str):
+            _logger.debug("AI returned text response, attempting to extract JSON")
+            try:
+                # Look for JSON pattern in the text
+                json_pattern = r'```(?:json)?\s*({[\s\S]*?})\s*```'
+                json_matches = re.findall(json_pattern, response_content)
+                
+                if json_matches:
+                    response_data = json.loads(json_matches[0])
+                    return response_data
+                elif response_content.strip().startswith('{') and response_content.strip().endswith('}'): 
+                    response_data = json.loads(response_content.strip())
+                    return response_data
+                else:
+                    _logger.error("Could not extract JSON from text response")
+                    return {
+                        "order_line": [],
+                        "note": f"AI returned invalid format: {response_content[:200]}..."
+                    }
+            except Exception as parse_error:
+                _logger.error(f"Failed to extract JSON from text response: {parse_error}")
+                return {
+                    "order_line": [],
+                    "note": f"AI parsing error: {str(parse_error)}"
+                }
+        
+        # If it's a dictionary, use it directly
+        if isinstance(response_content, dict):
+            _logger.debug("AI returned dictionary response, using directly")
+            return response_content
+        
+        # If we get here, the response is in an unexpected format
+        _logger.error(f"Unexpected response format: {type(response_content)}")
+        return {
+            "order_line": [],
+            "note": f"AI returned unexpected format: {type(response_content)}"
+        }
+    
+ 
