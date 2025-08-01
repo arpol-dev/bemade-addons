@@ -26,6 +26,12 @@ class HelpdeskTicket(models.Model):
         help='Products suggested by AI based on ticket description',
     )
     
+    ai_extracted_delivery_date = fields.Char(
+        string='AI Extracted Delivery Date',
+        readonly=True,
+        help='Delivery date extracted from ticket by AI (YYYY-MM-DD format)',
+    )
+    
     @api.depends('team_id')
     def _compute_team_use_ai_sale_orders(self):
         for ticket in self:
@@ -45,6 +51,11 @@ class HelpdeskTicket(models.Model):
     def _ai_convert_to_sale_order(self):
         """Create a sale order using AI to suggest products based on ticket description"""
         self.ensure_one()
+        
+        # Log which AI model is being used
+        company = self.env.company
+        model_name = company.openwebui_default_model_id.technical_name
+        _logger.debug(f"Using AI model '{model_name}' for _ai_convert_to_sale_order")
 
         values = self._get_sale_order_values()
         values["partner_id"] = self.partner_id.id
@@ -53,14 +64,58 @@ class HelpdeskTicket(models.Model):
         if 'date_order' not in values or not values['date_order']:
             from datetime import datetime
             values['date_order'] = datetime.now()
-        
-        # Fix empty string dates by converting them to None
-        # This prevents PostgreSQL errors with empty string timestamps
-        date_fields = ['date_order', 'commitment_date', 'validity_date']
-        for field in date_fields:
-            if field in values and values[field] == '':
-                values[field] = None
 
+        # Get sale order values using AI (this will include potential and matched products for unmatched products tracking)
+        sale_order_values = self._get_sale_order_values()
+        
+        # Extract potential and matched products for unmatched products message
+        potential_products = sale_order_values.pop('_potential_products_for_tracking', [])
+        matched_products = sale_order_values.pop('_matched_products_for_tracking', [])
+        
+        # Debug: Check if tracking fields are still in sale_order_values
+        _logger.debug(f"Remaining sale_order_values keys: {list(sale_order_values.keys())}")
+        
+        # Post temporary message about unmatched products if any
+        temp_unmatched_message_id = self._post_unmatched_products_message(matched_products, potential_products)
+        
+        # Update values with AI-generated data (excluding tracking fields)
+        values.update(sale_order_values)
+        
+        # Explicitly remove tracking fields if they were added somehow
+        values.pop('_potential_products_for_tracking', None)
+        values.pop('_matched_products_for_tracking', None)
+        
+        # Debug: Check if tracking fields are in values after update
+        _logger.debug(f"Values keys after update: {list(values.keys())}")
+        
+        # Fix datetime fields - convert empty strings to None and parse date strings to datetime objects
+        # For None values, set to current datetime to avoid Odoo assertion errors
+        from datetime import datetime
+        datetime_fields = ['date_order', 'commitment_date', 'validity_date']
+        for field in datetime_fields:
+            if field in values:
+                if values[field] == '':
+                    values[field] = None
+                elif isinstance(values[field], str):
+                    # Try to parse string dates in YYYY-MM-DD format
+                    try:
+                        # If it's already in the correct format, convert to datetime
+                        if len(values[field]) == 10 and values[field][4] == '-' and values[field][7] == '-':
+                            # Convert YYYY-MM-DD string to datetime object at noon to avoid timezone issues
+                            date_obj = datetime.strptime(values[field] + ' 12:00:00', '%Y-%m-%d %H:%M:%S')
+                            values[field] = date_obj
+                    except ValueError:
+                        # If parsing fails, leave as is and let Odoo handle it
+                        _logger.warning(f"Could not parse {field} date string: {values[field]}")
+                elif values[field] is not None and not isinstance(values[field], (datetime, type(None))):
+                    # Log unexpected date format
+                    _logger.warning(f"Unexpected {field} format: {type(values[field])}")
+        
+        # Ensure datetime fields have actual datetime values, not None
+        # Odoo's sale order creation requires datetime instances for these fields
+        for field in ['date_order', 'commitment_date']:
+            if field in values and values[field] is None:
+                values[field] = datetime.now()
 
         # Create the sale order
         sale_order = self.env['sale.order'].create(values)
@@ -71,6 +126,14 @@ class HelpdeskTicket(models.Model):
         # Post original email contents and document information to the chatter
         self._post_source_information_message(sale_order)
         
+        # Delete the temporary unmatched products message if it exists
+        if temp_unmatched_message_id:
+            try:
+                temp_message = self.env['mail.message'].browse(temp_unmatched_message_id)
+                if temp_message.exists():
+                    temp_message.unlink()
+            except Exception as e:
+                _logger.warning(f"Could not delete temporary unmatched products message: {e}")
 
 
         return {
@@ -202,6 +265,10 @@ class HelpdeskTicket(models.Model):
         potential_products = self._ai_extract_potential_products(ticket_data)
         _logger.debug(f"Step 1 result - Potential products: {potential_products}")
         
+        # Extract delivery date if available (stored in field ai_extracted_delivery_date)
+        delivery_date = self.ai_extracted_delivery_date
+        _logger.debug(f"Step 1 result - Extracted delivery date: {delivery_date}")
+        
         # If no potential products found, return empty order
         if not potential_products:
             _logger.warning("No potential products found in ticket content")
@@ -225,8 +292,12 @@ class HelpdeskTicket(models.Model):
         
         # STEP 3: Format the matched products into final JSON structure
         _logger.debug("Step 3: Formatting matched products into final sales order structure")
-        final_order = self._ai_format_final_sale_order(matched_products, ticket_data)
+        final_order = self._ai_format_final_sale_order(matched_products, ticket_data, delivery_date)
         _logger.debug(f"Step 3 result - Final order: {final_order}")
+        
+        # Return the final formatted sales order along with potential and matched products for unmatched products tracking
+        final_order['_potential_products_for_tracking'] = potential_products
+        final_order['_matched_products_for_tracking'] = matched_products
         
         # Return the final formatted sales order
         return final_order
@@ -380,14 +451,14 @@ class HelpdeskTicket(models.Model):
                     import traceback
                     _logger.error(f"Traceback: {traceback.format_exc()}")
         
-        # Create the prompt for the AI to extract potential products
+        # Create the prompt for the AI to extract potential products AND delivery date
         prompt = f"""IMPORTANT: YOU ARE NOT A CONVERSATIONAL ASSISTANT. YOU ARE A DATA EXTRACTION SYSTEM.
         
-        Your ONLY function is to analyze the provided content and return a list of potential products.
+        Your ONLY function is to analyze the provided content and return BOTH a list of potential products AND any delivery date mentioned.
         DO NOT introduce yourself, explain what you can or cannot do, or engage in conversation.
         ONLY RETURN THE REQUESTED JSON DATA STRUCTURE.
         
-        TASK: Extract ALL potential products mentioned in the following content:
+        TASK: Extract ALL potential products AND any delivery date mentioned in the following content:
         
         Customer Request:
         {description}
@@ -409,20 +480,28 @@ class HelpdeskTicket(models.Model):
            c. Extract any quantity information
            d. Extract any price information
            e. Extract any additional description
-        3. Return a structured JSON list of all potential products
+        3. Identify ANY date mentioned in the content - look for ALL of these:
+           a. Explicit delivery dates (phrases like 'delivery date', 'ship by', 'needed by', 'required by', etc.)
+           b. Quotation dates or dates labeled as 'Quotation Date'
+           d. ANY date in formats like MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, or similar formats
+        4. Convert any found dates to YYYY-MM-DD format (e.g., '2025-08-15')
+        5. Return a structured JSON object containing both the products list and delivery date
         
         RESPONSE FORMAT:
-        Your response MUST ONLY be a valid JSON array with the following structure:
+        Your response MUST ONLY be a valid JSON object with the following structure:
         
-        [
-            {{
-                "name": "Product name",
-                "default_code": "Product default code",
-                "quantity": "Quantity if mentioned (number or text)",
-                "price": "Price if mentioned"
-            }},
-            ...
-        ]
+        {{
+            "products": [
+                {{
+                    "name": "Product name",
+                    "default_code": "Product default code",
+                    "quantity": "Quantity if mentioned (number or text)",
+                    "price": "Price if mentioned"
+                }},
+                ...
+            ],
+            "delivery_date": "YYYY-MM-DD format if a delivery date is mentioned, null otherwise"
+        }}
         
         CRITICAL RULES FOR IDENTIFYING PRODUCTS:
         1. A potential product is ANYTHING that could be a product - be liberal in identification
@@ -434,7 +513,17 @@ class HelpdeskTicket(models.Model):
         7. Return ONLY valid JSON with no text before or after
         8. DO NOT explain what you're doing or respond conversationally
         
+        CRITICAL RULES FOR IDENTIFYING DATES:
+        1. SCAN THE ENTIRE DOCUMENT FOR ANY DATES IN ANY FORMAT - especially MM/DD/YYYY format
+        2. Look for dates near labels like 'Quotation Date', 'Expiration', 'Delivery Date', etc.
+        3. If you find a date labeled as 'Quotation Date', use it as the delivery date if no explicit delivery date is found
+        4. If you find a date labeled as 'Expiration', use it as the delivery date if no explicit delivery date or quotation date is found
+        5. Convert all dates to YYYY-MM-DD format (e.g., if you see '07/02/2025', convert to '2025-07-02')
+        6. If multiple dates are found, prioritize in this order: explicit delivery date > quotation date > expiration date
+        7. DO NOT return null for delivery_date if ANY date is found in the document
+        
         IMPORTANT: Include EVERYTHING that might be a product, even if uncertain.
+        IMPORTANT: ALWAYS extract at least one date from the document if any date exists, regardless of its label.
         """
         
         # Call the AI to extract potential products
@@ -486,22 +575,40 @@ class HelpdeskTicket(models.Model):
                 
                 if json_matches:
                     response_data = json.loads(json_matches[0])
+                    # Handle new structure with products and delivery_date
+                    if isinstance(response_data, dict) and 'products' in response_data:
+                        # Store delivery date as instance variable for later use
+                        self.ai_extracted_delivery_date = response_data.get('delivery_date')
+                        _logger.debug(f"Extracted delivery date: {self.ai_extracted_delivery_date}")
+                        return response_data['products']
                     return response_data if isinstance(response_data, list) else [response_data]
                 elif response_content.strip().startswith('[') and response_content.strip().endswith(']'): 
                     response_data = json.loads(response_content.strip())
+                    # Handle old format (just products list)
+                    self.ai_extracted_delivery_date = False
+                    _logger.debug("Using old format - no delivery date extracted")
                     return response_data if isinstance(response_data, list) else [response_data]
                 elif response_content.strip().startswith('{') and response_content.strip().endswith('}'): 
                     response_data = json.loads(response_content.strip())
+                    # Handle new structure with products and delivery_date
+                    if isinstance(response_data, dict) and 'products' in response_data:
+                        # Store delivery date as instance variable for later use
+                        self.ai_extracted_delivery_date = response_data.get('delivery_date')
+                        _logger.debug(f"Extracted delivery date: {self.ai_extracted_delivery_date}")
+                        return response_data['products']
                     return [response_data]
                 else:
                     _logger.error("Could not extract JSON from text response")
+                    self.ai_extracted_delivery_date = False
                     return []
             except Exception as parse_error:
                 _logger.error(f"Failed to extract JSON from text response: {parse_error}")
+                self.ai_extracted_delivery_date = False
                 return []
         
         # If we get here, the response is in an unexpected format
         _logger.error(f"Unexpected response format: {type(response_content)}")
+        self.ai_extracted_delivery_date = False
         return []
     
     def _ai_match_products_to_database(self, potential_products: list) -> list:
@@ -518,6 +625,8 @@ class HelpdeskTicket(models.Model):
         self.ensure_one()
         _logger.debug("Starting Step 2: Matching products to database")
         _logger.debug(f"Input products to match: {potential_products}")
+        
+        # We'll pass potential products to the unmatched products method instead of storing as instance attributes
         
         # Get the OpenWebUI provider from company settings
         company = self.env.company
@@ -575,21 +684,15 @@ class HelpdeskTicket(models.Model):
                 "price_unit": PRICE,
                 "name": "Product name (for reference)"
             }},
-            {{
-                "display_type": "line_note",
-                "name": "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)",
-                "product_uom_qty": 0.0
-            }},
             ...
         ]
         
         CRITICAL RULES FOR MATCHING:
         1. You MUST use the provided tools for EVERY potential product
         2. product_id MUST be a numeric ID returned by a tool call, NEVER make up IDs
-        3. For products not found in the database, use the display_type: 'line_note' format with this EXACT format: "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)"
-        4. Include as much detail as possible for unmatched products including quantity, reference, and description if available
-        5. Return ONLY valid JSON with no text before or after
-        6. DO NOT explain what you're doing or respond conversationally
+        3. For products not found in the database, simply exclude them from the response (DO NOT include line notes)
+        4. Return ONLY valid JSON with no text before or after
+        5. DO NOT explain what you're doing or respond conversationally
         
         IMPORTANT: You must invoke the tools directly using function calling, not just output text that looks like a tool call.
         """
@@ -601,7 +704,7 @@ class HelpdeskTicket(models.Model):
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a data processing system with access to tools for finding product IDs in an Odoo database. Your ONLY job is to match the provided potential products to actual database products using the available tools. For ANY product that cannot be found in the database, you MUST include it as a line note with display_type: 'line_note' in your response."
+                        "content": "You are a data processing system with access to tools for finding product IDs in an Odoo database. Your ONLY job is to match the provided potential products to actual database products using the available tools. For ANY product that cannot be found in the database, you should simply exclude it from your response."
                     },
                     {
                         "role": "user",
@@ -623,26 +726,21 @@ class HelpdeskTicket(models.Model):
         # Process the AI response
         _logger.debug(f"AI product matching response type: {type(response)}")
         
-        # Add detailed logging of the response content
-        try:
-            _logger.debug(f"AI product matching response content: {json.dumps(response, indent=2)[:1000]}...")
-        except:
-            _logger.debug("Could not serialize AI product matching response for logging")
-        
         # If it's a dictionary, use it directly
         if isinstance(response, dict):
             _logger.debug("AI returned dictionary response, using directly")
             # Check if it's a single object that should be in a list
             if 'product_id' in response or 'display_type' in response:
                 return [response]
-            return response
+            # If it's a dictionary but not a single product object, return empty list
+            return []
         
         # Handle string responses (extract JSON if possible)
         if isinstance(response, str):
             _logger.debug("AI returned text response, attempting to extract JSON")
             try:
                 # Look for JSON pattern in the text
-                json_pattern = r'```(?:json)?\s*(\[[\s\S]*?\]|{[\s\S]*?})\s*```'
+                json_pattern = r'```(?:json)?\s*(\[[\s\S]*?\]|{{[\s\S]*?}})\s*```'
                 json_matches = re.findall(json_pattern, response)
                 
                 if json_matches:
@@ -651,7 +749,7 @@ class HelpdeskTicket(models.Model):
                 if response.strip().startswith('[') and response.strip().endswith(']'): 
                     response_data = json.loads(response.strip())
                     return [response_data]
-                elif response.strip().startswith('{') and response.strip().endswith('}'): 
+                elif response.strip().startswith('{{') and response.strip().endswith('}}'): 
                     response_data = json.loads(response.strip())
                     return [response_data]
                 else:
@@ -663,13 +761,126 @@ class HelpdeskTicket(models.Model):
         
         # If it's already a list, return it
         if isinstance(response, list):
+            # Store matched products for later use
+            self._matched_products_for_tracking = response
             return response
         
         # If we get here, the response is in an unexpected format
         _logger.error(f"Unexpected response format: {type(response)}")
         return []
     
-    def _ai_format_final_sale_order(self, matched_products: list, ticket_data: dict) -> dict:
+    def _post_unmatched_products_message(self, matched_products: list, potential_products: list = None):
+        """
+    Post a temporary chatter message listing products that the AI couldn't find in the database.
+    This message will be deleted after the sale order is created.
+    
+    Args:
+        matched_products (list): List of products that were successfully matched
+        potential_products (list): List of potential products identified by AI (optional)
+    """
+        self.ensure_one()
+        
+        # Use provided potential products or fall back to stored attribute
+        if potential_products is None:
+            if not hasattr(self, '_potential_products_for_tracking'):
+                return
+            potential_products = self._potential_products_for_tracking
+        
+        # Create a set of matched product names/refs for quick lookup
+        matched_names = set()
+        matched_refs = set()
+        
+        for product in matched_products:
+            if isinstance(product, dict):
+                # Add product name if available
+                if 'name' in product and product['name']:
+                    matched_names.add(product['name'].lower().strip())
+                # Add product reference/code if available
+                if 'product_code' in product and product['product_code']:
+                    matched_refs.add(product['product_code'].lower().strip())
+        
+        # Identify unmatched products
+        unmatched_products = []
+        for product in potential_products:
+            if isinstance(product, dict):
+                # Check if product was matched by name or reference
+                name_matched = False
+                ref_matched = False
+                
+                # Check by name
+                if 'name' in product and product['name']:
+                    name_matched = product['name'].lower().strip() in matched_names
+                
+                # Check by reference/code
+                if 'product_code' in product and product['product_code']:
+                    ref_matched = product['product_code'].lower().strip() in matched_refs
+                
+                # If neither name nor reference matched, add to unmatched list
+                if not name_matched and not ref_matched:
+                    product_info = {}
+                    if 'name' in product:
+                        product_info['name'] = product['name']
+                    if 'product_code' in product:
+                        product_info['product_code'] = product['product_code']
+                    if 'product_uom_qty' in product:
+                        product_info['quantity'] = product['product_uom_qty']
+                    
+                    unmatched_products.append(product_info)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_unmatched = []
+        for product in unmatched_products:
+            # Create a unique key for the product
+            key_parts = []
+            if 'name' in product:
+                key_parts.append(product['name'].lower().strip())
+            if 'product_code' in product:
+                key_parts.append(product['product_code'].lower().strip())
+            key = '|'.join(key_parts)
+            
+            if key not in seen:
+                seen.add(key)
+                unique_unmatched.append(product)
+        
+        # If we have unmatched products, post a temporary message
+        if unique_unmatched:
+            message_lines = ["<p><strong>⚠️ AI Unmatched Products</strong></p>"]
+            message_lines.append("<p>The following products were mentioned in the ticket but could not be found in the product database:</p>")
+            message_lines.append("<ul>")
+            
+            for product in unique_unmatched:
+                product_desc = []
+                if 'name' in product and product['name']:
+                    product_desc.append(f"<strong>{product['name']}</strong>")
+                if 'product_code' in product and product['product_code']:
+                    product_desc.append(f"(Code: {product['product_code']})")
+                if 'quantity' in product:
+                    product_desc.append(f"Qty: {product['quantity']}")
+                
+                message_lines.append(f"<li>{' '.join(product_desc)}</li>")
+            
+            message_lines.append("</ul>")
+            message_lines.append("<p><em>This message will be automatically removed after the sale order is created.</em></p>")
+            
+            message_body = "\n".join(message_lines)
+            
+            # Post the message with body_is_html=True to ensure proper rendering
+            message = self.message_post(
+                body=message_body,
+                subject="AI Unmatched Products",
+                message_type='comment',
+                subtype_xmlid='mail.mt_note',
+                body_is_html=True
+            )
+            
+            # Store the message ID for later deletion
+            temp_unmatched_message_id = message.id
+            
+            # Return the message ID so it can be used for deletion later
+            return temp_unmatched_message_id
+    
+    def _ai_format_final_sale_order(self, matched_products: list, ticket_data: dict, delivery_date: str | None = None) -> dict:
         """
         Third AI call: Format the matched products into final JSON structure.
         This step will not have access to files/attachments.
@@ -702,61 +913,63 @@ class HelpdeskTicket(models.Model):
         chatter_messages = ticket_data.get('ticket_messages', '')
         
         prompt = f"""IMPORTANT: YOU ARE NOT A CONVERSATIONAL ASSISTANT. YOU ARE A DATA FORMATTING SYSTEM.
-        
-        Your ONLY function is to format the provided matched products into a structured sales order JSON.
-        DO NOT introduce yourself, explain what you can or cannot do, or engage in conversation.
-        ONLY RETURN THE REQUESTED JSON DATA STRUCTURE.
-        
-        TASK: Format the following matched products into a complete sales order structure:
-        
-        Matched Products:
-        {matched_products_json}
-        
-        Additional Context:
-        Customer Request:
-        {description}
-        
-        Chatter Messages:
-        {chatter_messages}
-        
-        WORKFLOW - FOLLOW THESE STEPS EXACTLY:
-        1. Extract order details (client reference, dates, notes) from the context
-        2. Format the matched products into the required sales order line structure
-        3. Construct the complete JSON response
-        
-        RESPONSE FORMAT:
-        Your response MUST ONLY be a valid JSON object with the following structure:
-        
-        {{
-            "client_order_ref": "Customer PO number if mentioned",
-            "date_order": "YYYY-MM-DD format if a specific order date is mentioned",
-            "commitment_date": "YYYY-MM-DD format if a delivery date is mentioned",
-            "note": "Any special instructions or notes for the order",
-            "order_line": [
-                [0, 0, {{
-                    "product_id": NUMERIC_ID_FROM_TOOL_CALL,
-                    "product_uom_qty": QUANTITY,
-                    "price_unit": PRICE
-                }}],
-                [0, 0, {{
-                    "display_type": "line_note",
-                    "name": "Unmatched product: Product name (qty: QUANTITY) (ref: REFERENCE if available)",
-                    "product_uom_qty": 0.0
-                }}],
-                ...
-            ]
-        }}
-        
-        CRITICAL RULES FOR FORMATTING:
-        1. The order_line array MUST contain arrays in the format [0, 0, {{...}}]
-        2. Matched products with product_id should be formatted as [0, 0, {{"product_id": ID, "product_uom_qty": QTY, "price_unit": PRICE}}]
-        3. Unmatched products with display_type should be formatted as [0, 0, {{"display_type": "line_note", "name": "...", "product_uom_qty": 0.0}}]
-        4. Extract any client reference, dates, or notes from the context
-        5. Return ONLY valid JSON with no text before or after
-        6. DO NOT explain what you're doing or respond conversationally
-        
-        IMPORTANT: Ensure the final structure matches exactly what's required for Odoo sales order creation.
-        """
+    
+    Your ONLY function is to format the provided matched products into a structured sales order JSON.
+    DO NOT introduce yourself, explain what you can or cannot do, or engage in conversation.
+    ONLY RETURN THE REQUESTED JSON DATA STRUCTURE.
+    
+    TASK: Format the following matched products into a complete sales order structure:
+    
+    Matched Products:
+    {matched_products_json}
+    
+    Additional Context:
+    Customer Request:
+    {description}
+    
+    Chatter Messages:
+    {chatter_messages}
+    
+    Extracted Delivery Date (from previous analysis):
+    {delivery_date or 'No delivery date extracted'}
+    
+    WORKFLOW - FOLLOW THESE STEPS EXACTLY:
+    1. Extract order details (client reference, dates, notes) from the context
+    2. Format the matched products into the required sales order line structure
+    3. Construct the complete JSON response
+    
+    RESPONSE FORMAT:
+    Your response MUST ONLY be a valid JSON object with the following structure:
+    
+    {{
+        "client_order_ref": "Customer PO number if mentioned",
+        "commitment_date": "YYYY-MM-DD format if a delivery date is mentioned (look for phrases like 'delivery date', 'ship by', 'needed by', 'required by', 'delivery needed', etc.)",
+        "note": "Any special instructions or notes for the order",
+        "order_line": [
+            [0, 0, {{
+                "product_id": NUMERIC_ID_FROM_TOOL_CALL,
+                "product_uom_qty": QUANTITY,
+                "price_unit": PRICE
+            }}],
+            ...
+        ]
+    }}
+    
+    CRITICAL RULES FOR FORMATTING:
+    1. The order_line array MUST contain arrays in the format [0, 0, {{...}}]
+    2. Matched products with product_id should be formatted as [0, 0, {{"product_id": ID, "product_uom_qty": QTY, "price_unit": PRICE}}]
+    3. Extract any client reference, dates, or notes from the context
+    4. For dates, look for common phrases indicating delivery dates such as 'delivery date', 'ship by', 'needed by', 'required by', 'delivery needed', 'delivery required', 'must arrive by', etc.
+    5. Convert any found delivery dates to YYYY-MM-DD format (e.g., '2025-08-15')
+    6. Return ONLY valid JSON with no text before or after
+    7. DO NOT explain what you're doing or respond conversationally
+    8. If you cannot find a date, use null instead of an empty string or 'none'
+    9. CRITICAL: Dates must be in EXACTLY YYYY-MM-DD format with 4-digit year, 2-digit month, and 2-digit day (e.g., '2025-08-15')
+    10. CRITICAL: Do NOT include any time information in dates (no hours, minutes, seconds)
+    11. If no date is found, use null for the date fields, NOT empty strings
+    
+    IMPORTANT: Ensure the final structure matches exactly what's required for Odoo sales order creation.
+    """
         
         # Call the AI to format the final sales order
         try:
