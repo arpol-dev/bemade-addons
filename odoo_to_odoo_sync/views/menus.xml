@@ -42,4 +42,11 @@
               parent="menu_sync_monitoring"
               action="action_sync_log"
               sequence="20"/>
+              
+    <!-- Conflict menu -->
+    <menuitem id="menu_odoo_sync_conflict"
+              name="Conflicts"
+              parent="menu_sync_root"
+              action="action_odoo_sync_conflict"
+              sequence="30"/>
 </odoo>

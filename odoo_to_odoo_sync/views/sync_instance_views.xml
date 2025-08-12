@@ -12,7 +12,7 @@
                                    decoration-warning="state == 'testing'" 
                                    decoration-danger="state == 'error'"/>
                 <field name="last_connection"/>
-                <field name="active" invisible="1"/>
+                <field name="active" widget="boolean_toggle"/>
             </list>
         </field>
     </record>
@@ -43,6 +43,7 @@
                         <group>
                             <field name="url" placeholder="https://example.odoo.com"/>
                             <field name="database"/>
+                            <!-- <field name="conflict_resolution_strategy"/> -->
                         </group>
                         <group>
                             <field name="username"/>

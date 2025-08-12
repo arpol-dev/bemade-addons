@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+        <!-- Extend project form view to add client sync fields -->
+        <record id="view_project_form_client_sync" model="ir.ui.view">
+            <field name="name">project.project.form.client.sync</field>
+            <field name="model">project.project</field>
+            <field name="inherit_id" ref="project.edit_project"/>
+            <field name="arch" type="xml">
+                <xpath expr="//group[@name='extra_settings']" position="inside">
+                    <group string="Client Synchronization" name="client_sync">
+                        <field name="is_client_project"/>
+                        <field name="client_api_token" invisible="not is_client_project"/>
+                        <field name="client_instance_id" invisible="not is_client_project"/>
+                        <button name="action_generate_api_token" 
+                                string="Generate API Token" 
+                                type="object" 
+                                invisible="not is_client_project"
+                                class="btn btn-primary"/>
+                        <button name="action_revoke_api_token" 
+                                string="Revoke API Token" 
+                                type="object" 
+                                invisible="not is_client_project"
+                                class="btn btn-secondary"/>
+                    </group>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

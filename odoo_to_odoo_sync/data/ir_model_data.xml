@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- Register models for security access -->
+        <record id="model_odoo_sync_instance" model="ir.model">
+            <field name="name">Odoo Sync Instance</field>
+            <field name="model">odoo.sync.instance</field>
+        </record>
+        
+        <record id="model_odoo_sync_model" model="ir.model">
+            <field name="name">Odoo Sync Model</field>
+            <field name="model">odoo.sync.model</field>
+        </record>
+        
+        <record id="model_odoo_sync_model_field" model="ir.model">
+            <field name="name">Odoo Sync Model Field</field>
+            <field name="model">odoo.sync.model.field</field>
+        </record>
+        
+        <record id="model_odoo_sync_queue" model="ir.model">
+            <field name="name">Odoo Sync Queue</field>
+            <field name="model">odoo.sync.queue</field>
+        </record>
+        
+        <record id="model_odoo_sync_log" model="ir.model">
+            <field name="name">Odoo Sync Log</field>
+            <field name="model">odoo.sync.log</field>
+        </record>
+        
+        <record id="model_odoo_sync_manager" model="ir.model">
+            <field name="name">Odoo Sync Manager</field>
+            <field name="model">odoo.sync.manager</field>
+        </record>
+        
+        <record id="model_odoo_sync_conflict" model="ir.model">
+            <field name="name">Odoo Sync Conflict</field>
+            <field name="model">odoo.sync.conflict</field>
+        </record>
+        
+        <record id="model_odoo_sync_conflict_wizard" model="ir.model">
+            <field name="name">Odoo Sync Conflict Wizard</field>
+            <field name="model">odoo.sync.conflict.wizard</field>
+        </record>
+        
+        <record id="model_odoo_sync_conflict_wizard_field" model="ir.model">
+            <field name="name">Odoo Sync Conflict Wizard Field</field>
+            <field name="model">odoo.sync.conflict.wizard.field</field>
+        </record>
+    </data>
+</odoo>

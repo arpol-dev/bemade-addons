@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Form View -->
+    <record id="view_sync_manager_form" model="ir.ui.view">
+        <field name="name">odoo.sync.manager.form</field>
+        <field name="model">odoo.sync.manager</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Sync Manager Configuration"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="conflict_resolution_strategy"/>
+                        </group>
+                    </group>
+                    <button name="set_conflict_strategy" type="object" string="Apply Conflict Strategy" class="btn-primary"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- List View -->
+    <record id="view_sync_manager_list" model="ir.ui.view">
+        <field name="name">odoo.sync.manager.list</field>
+        <field name="model">odoo.sync.manager</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_sync_manager" model="ir.actions.act_window">
+        <field name="name">Sync Manager</field>
+        <field name="res_model">odoo.sync.manager</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configure synchronization settings
+            </p>
+            <p>
+                Set up conflict resolution strategies and other synchronization parameters.
+            </p>
+        </field>
+    </record>
+</odoo>

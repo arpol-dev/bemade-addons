@@ -13,11 +13,7 @@
               action="action_odoo_to_bemade_instances"
               sequence="10"/>
 
-    <menuitem id="menu_odoo_to_bemade_sync_models"
-              name="Modèles synchronisés"
-              parent="menu_odoo_to_bemade_root"
-              action="action_odoo_to_bemade_sync_models"
-              sequence="20"/>
+    <!-- Removed Synchronized Models menu as it's now managed in the instance itself -->
 
     <menuitem id="menu_odoo_to_bemade_sync_queue"
               name="File d'attente"

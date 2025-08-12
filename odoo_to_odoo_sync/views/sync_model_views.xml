@@ -9,7 +9,7 @@
                 <field name="instance_id"/>
                 <field name="target_model"/>
                 <field name="priority"/>
-                <field name="active" invisible="1"/>
+                <field name="active" widget="boolean_toggle"/>
             </list>
         </field>
     </record>
@@ -44,6 +44,7 @@
                                     <field name="name" readonly="1"/>
                                     <field name="required"/>
                                     <field name="sync_default" placeholder="Valeur par défaut si vide"/>
+                                    <field name="conflict_strategy" widget="radio"/>
                                 </list>
                             </field>
                         </page>

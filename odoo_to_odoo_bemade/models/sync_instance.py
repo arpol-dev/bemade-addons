@@ -163,22 +163,8 @@ class OdooToBemadeInstance(models.Model):
     
     # Remarque: model_ids et log_ids sont déjà définis ci-dessus, pas besoin de duplication
     
-    @api.onchange
-    def onchange(self, values, field_names, fields_spec):
-        """Handle onchange events.
-        
-        This method implements the abstract method from BaseModel by delegating
-        to the parent class implementation.
-        
-        Args:
-            values: The values dict
-            field_names: Names of the fields that triggered the onchange
-            fields_spec: The onchange specification
-            
-        Returns:
-            Dictionary with updated values
-        """
-        return super(OdooToBemadeInstance, self).onchange(values, field_names, fields_spec)
+    # NOTE: The custom onchange method was removed as it had an incorrect signature
+    # and was causing TypeError when creating new instances
 
     @api.onchange('url')
     def _onchange_url(self):
@@ -203,6 +189,7 @@ class OdooToBemadeInstance(models.Model):
         Note: connection_type is inherited from the parent model, but linters won't detect this.
         """
         self.ensure_one()
+        
         # Field inherited from parent model: connection_type
         # pylint: disable=no-member
         if self.connection_type == 'odoorpc':
@@ -210,7 +197,31 @@ class OdooToBemadeInstance(models.Model):
             
         # Call the parent method - linters might not recognize this as valid
         # pylint: disable=no-member
-        return super(OdooToBemadeInstance, self).test_connection()
+        result = super(OdooToBemadeInstance, self).test_connection()
+        
+        # Create a log entry with the result
+        if result:
+            self.env['odoo.to.bemade.sync.log'].log(
+                operation='test_connection',
+                model='odoo.to.bemade.instance',
+                record_id=self.id,
+                result='success',
+                details=f"Successfully connected to {self.name} using {self.connection_type}",
+                instance_id=self.id
+                # queue_id will be automatically created by the log method
+            )
+        else:
+            self.env['odoo.to.bemade.sync.log'].log(
+                operation='test_connection',
+                model='odoo.to.bemade.instance',
+                record_id=self.id,
+                result='error',
+                details=f"Connection test failed: {self.error_message}",
+                instance_id=self.id
+                # queue_id will be automatically created by the log method
+            )
+        
+        return result
 
     def _test_odoorpc_connection(self):
         """Test connection using OdooRPC library.
@@ -261,6 +272,8 @@ class OdooToBemadeInstance(models.Model):
                     'last_connection': fields.Datetime.now(),
                     'error_message': False
                 })
+                # Success is logged in the main test_connection method
+                # No need to log here to avoid duplicate entries
                 return True
             else:
                 # This should rarely happen as login usually raises an exception
@@ -268,28 +281,45 @@ class OdooToBemadeInstance(models.Model):
                 
         except UserError as e:
             # Pass through our UserError without modification
+            error_msg = str(e)
             self.write({
                 'state': 'error',
-                'error_message': str(e)
+                'error_message': error_msg
             })
-            _logger.error("Erreur d'authentification OdooRPC: %s", str(e))
+            # Error is logged in the main test_connection method
+            # No need to log here to avoid duplicate entries
+            _logger.error("Erreur d'authentification OdooRPC: %s", error_msg)
             return False
             
         except (ConnectionError, TimeoutError, ValueError, TypeError) as e:
             # Catch specific exceptions that can be raised during connection
+            error_msg = str(e)
             self.write({
                 'state': 'error',
-                'error_message': str(e)
+                'error_message': error_msg
             })
-            _logger.error("Erreur de connexion OdooRPC: %s", str(e))
+            # Error is logged in the main test_connection method
+            # No need to log here to avoid duplicate entries
+            _logger.error("Erreur de connexion OdooRPC: %s", error_msg)
             return False
         except Exception as e:  # pylint: disable=broad-except
             # Fall back for any unexpected exceptions
+            error_msg = str(e)
             self.write({
                 'state': 'error',
-                'error_message': f"Erreur inattendue: {str(e)}"
+                'error_message': f"Erreur inattendue: {error_msg}"
             })
-            _logger.error("Erreur inattendue OdooRPC: %s", str(e))
+            # Create error log entry
+            self.env['odoo.to.bemade.sync.log'].log(
+                operation='test_odoorpc_connection',
+                model='odoo.to.bemade.instance',
+                record_id=self.id,
+                result='error',
+                details=f"Unexpected error: {error_msg}",
+                instance_id=self.id
+                # queue_id will be automatically created by the log method
+            )
+            _logger.error("Erreur inattendue OdooRPC: %s", error_msg)
             return False
 
     def get_connection(self):

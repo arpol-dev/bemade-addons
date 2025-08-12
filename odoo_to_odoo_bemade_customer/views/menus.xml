@@ -20,14 +20,20 @@
               sequence="20"/>
 
     <menuitem id="menu_odoo_to_bemade_customer_sync_queue"
-              name="File d'attente"
-              parent="menu_odoo_to_bemade_customer_root"
-              action="action_odoo_to_bemade_customer_sync_queue"
-              sequence="30"/>
+               name="File d'attente"
+               parent="menu_odoo_to_bemade_customer_root"
+               action="action_odoo_to_bemade_customer_sync_queue"
+               sequence="30"/>
 
     <menuitem id="menu_odoo_to_bemade_customer_sync_logs"
-              name="Journaux de synchronisation"
-              parent="menu_odoo_to_bemade_customer_root"
-              action="action_odoo_to_bemade_customer_sync_logs"
-              sequence="40"/>
+               name="Journaux de synchronisation"
+               parent="menu_odoo_to_bemade_customer_root"
+               action="action_odoo_to_bemade_customer_sync_logs"
+               sequence="40"/>
+               
+    <menuitem id="menu_odoo_to_bemade_customer_config"
+               name="Configuration"
+               parent="menu_odoo_to_bemade_customer_root"
+               action="action_odoo_to_bemade_customer_config"
+               sequence="5"/>
 </odoo>

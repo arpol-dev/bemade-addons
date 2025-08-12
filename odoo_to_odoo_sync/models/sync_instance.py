@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
+from ..utils.encryption import encrypt_value, decrypt_value
+
 _logger = logging.getLogger(__name__)
 
 class OdooSyncInstance(models.Model):
@@ -55,6 +57,14 @@ class OdooSyncInstance(models.Model):
         string='Password', 
         required=True,
         help='Password of the technical user',
+        copy=False,
+    )
+    
+    # Store encrypted password separately
+    encrypted_password = fields.Char(
+        string='Encrypted Password',
+        copy=False,
+        help='Encrypted password for secure storage',
     )
     
     connection_type = fields.Selection(
@@ -79,6 +89,14 @@ class OdooSyncInstance(models.Model):
         default=3,
         help='Maximum number of connection retry attempts',
     )
+    
+    conflict_resolution_strategy = fields.Selection([
+        ('manual', 'Manual Resolution'),
+        ('timestamp', 'Newest Wins'),
+        ('source_priority', 'Source Instance Wins'),
+        ('destination_priority', 'Destination Instance Wins')
+    ], string='Conflict Resolution Strategy', default='manual',
+       help='Strategy for resolving synchronization conflicts with this instance')
     
     retry_delay = fields.Integer(
         string='Retry Delay',
@@ -127,6 +145,14 @@ class OdooSyncInstance(models.Model):
             if record.url != record._origin.url:
                 record.state = 'draft'
                 record.error_message = False
+                
+    @api.onchange('password')
+    def _onchange_password(self):
+        """Mark password for encryption when it changes."""
+        for record in self:
+            if record.password != record._origin.password:
+                # Password changed, will be encrypted on save
+                record.encrypted_password = False
 
     def test_connection(self):
         """Test the connection to the remote Odoo instance.
@@ -148,6 +174,34 @@ class OdooSyncInstance(models.Model):
             else:
                 raise UserError(f"Type de connexion non supporté: {record.connection_type}")
     
+    def _encrypt_sensitive_data(self):
+        """Encrypt sensitive data before saving to database."""
+        for record in self:
+            if record.password and not record.encrypted_password:
+                # Only encrypt if we have a password and it's not already encrypted
+                record.encrypted_password = encrypt_value(self.env, record.password)
+                
+    def _decrypt_sensitive_data(self):
+        """Decrypt sensitive data for use in connections."""
+        self.ensure_one()
+        if self.encrypted_password and not self.password:
+            # Only decrypt if we have an encrypted password and need the cleartext
+            return decrypt_value(self.env, self.encrypted_password)
+        return self.password
+    
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Override create to encrypt sensitive data."""
+        records = super().create(vals_list)
+        records._encrypt_sensitive_data()
+        return records
+    
+    def write(self, vals):
+        """Override write to encrypt sensitive data."""
+        result = super().write(vals)
+        self._encrypt_sensitive_data()
+        return result
+    
     def _test_xmlrpc_connection(self):
         """Test XML-RPC connection to the remote instance."""
         self.ensure_one()
@@ -161,9 +215,12 @@ class OdooSyncInstance(models.Model):
             if not parsed_url.scheme or not parsed_url.netloc:
                 raise UserError("Format d'URL invalide. Exemple valide: https://exemple.odoo.com")
                 
+            # Get decrypted password for authentication
+            password = self._decrypt_sensitive_data()
+                
             # Attempt to connect and authenticate
             common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
-            uid = common.authenticate(self.database, self.username, self.password, {})
+            uid = common.authenticate(self.database, self.username, password, {})
             
             if uid:
                 self.write({
@@ -231,8 +288,11 @@ class OdooSyncInstance(models.Model):
     
     def _get_xmlrpc_connection(self):
         """Get XML-RPC connection to the remote instance."""
+        # Get decrypted password for authentication
+        password = self._decrypt_sensitive_data()
+        
         common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
-        uid = common.authenticate(self.database, self.username, self.password, {})
+        uid = common.authenticate(self.database, self.username, password, {})
         models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object')
         
         return models, uid
@@ -264,8 +324,11 @@ class OdooSyncInstance(models.Model):
             
         try:
             models, uid = self.get_connection()
+            # Get decrypted password for authentication
+            password = self._decrypt_sensitive_data()
+            
             result = models.execute_kw(
-                self.database, uid, self.password,
+                self.database, uid, password,
                 model, method, args, kwargs
             )
             return result

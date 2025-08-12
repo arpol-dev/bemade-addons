@@ -13,21 +13,21 @@
                     <group>
                         <group>
                             <field name="create_date"/>
-                            <field name="model_id"/>
+                            <field name="queue_id"/>
+                            <field name="operation"/>
+                            <field name="model"/>
                             <field name="record_id"/>
                         </group>
                         <group>
-                            <field name="operation"/>
+                            <field name="state"/>
                             <field name="result"/>
-                            <field name="user_id"/>
+                            <field name="bemade_instance_id"/>
+                            <field name="details"/>
                         </group>
                     </group>
                     <notebook>
                         <page string="Détails">
                             <field name="details" widget="html"/>
-                        </page>
-                        <page string="Données">
-                            <field name="data_json"/>
                         </page>
                     </notebook>
                 </sheet>
@@ -40,15 +40,18 @@
         <field name="name">odoo.to.bemade.sync.log.tree</field>
         <field name="model">odoo.to.bemade.sync.log</field>
         <field name="arch" type="xml">
-            <tree string="Journaux de synchronisation" decoration-success="result == 'success'" decoration-danger="result == 'error'" decoration-info="result == 'info'" create="false">
+            <list decoration-success="state == 'success'" decoration-danger="state == 'error'" create="false">
                 <field name="create_date"/>
                 <field name="name"/>
-                <field name="model_id"/>
-                <field name="record_id"/>
+                <field name="queue_id"/>
                 <field name="operation"/>
+                <field name="model"/>
+                <field name="record_id"/>
+                <field name="state"/>
                 <field name="result"/>
-                <field name="user_id"/>
-            </tree>
+                <field name="message"/>
+                <field name="bemade_instance_id"/>
+            </list>
         </field>
     </record>
 
@@ -57,23 +60,25 @@
         <field name="name">odoo.to.bemade.sync.log.search</field>
         <field name="model">odoo.to.bemade.sync.log</field>
         <field name="arch" type="xml">
-            <search string="Rechercher dans les journaux">
+            <search>
                 <field name="name"/>
-                <field name="model_id"/>
+                <field name="queue_id"/>
+                <field name="operation"/>
+                <field name="model"/>
                 <field name="record_id"/>
-                <field name="details"/>
+                <field name="bemade_instance_id"/>
                 <separator/>
-                <filter string="Succès" name="success" domain="[('result', '=', 'success')]"/>
-                <filter string="Erreurs" name="error" domain="[('result', '=', 'error')]"/>
-                <filter string="Informations" name="info" domain="[('result', '=', 'info')]"/>
+                <filter string="Succès" name="success" domain="[('state', '=', 'success')]"/>
+                <filter string="Erreurs" name="error" domain="[('state', '=', 'error')]"/>
                 <separator/>
-                <filter string="Moi" name="my_logs" domain="[('user_id', '=', uid)]"/>
-                <group expand="0" string="Regrouper par">
-                    <filter string="Modèle" name="groupby_model" domain="[]" context="{'group_by': 'model_id'}"/>
+                <group expand="0">
+                    <filter string="File d'attente" name="groupby_queue" domain="[]" context="{'group_by': 'queue_id'}"/>
                     <filter string="Opération" name="groupby_operation" domain="[]" context="{'group_by': 'operation'}"/>
+                    <filter string="Modèle" name="groupby_model" domain="[]" context="{'group_by': 'model'}"/>
+                    <filter string="Instance" name="groupby_instance" domain="[]" context="{'group_by': 'bemade_instance_id'}"/>
+                    <filter string="État" name="groupby_state" domain="[]" context="{'group_by': 'state'}"/>
                     <filter string="Résultat" name="groupby_result" domain="[]" context="{'group_by': 'result'}"/>
-                    <filter string="Date" name="groupby_create_date" domain="[]" context="{'group_by': 'create_date:day'}"/>
-                    <filter string="Utilisateur" name="groupby_user" domain="[]" context="{'group_by': 'user_id'}"/>
+                    <filter string="Date" name="groupby_date" domain="[]" context="{'group_by': 'create_date:day'}"/>
                 </group>
             </search>
         </field>
@@ -83,7 +88,7 @@
     <record id="action_odoo_to_bemade_sync_logs" model="ir.actions.act_window">
         <field name="name">Journaux de synchronisation</field>
         <field name="res_model">odoo.to.bemade.sync.log</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">list,form</field>
         <field name="context">{'search_default_error': 1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">

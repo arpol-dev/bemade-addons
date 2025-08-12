@@ -15,7 +15,7 @@ from odoo.exceptions import UserError
 _logger = logging.getLogger(__name__)
 
 
-class OdooToBemadeCustomerSyncManager(models.AbstractModel):
+class OdooToBemadeCustomerSyncManager(models.Model):
     """Gestionnaire de synchronisation.
 
     Coordonne les processus de synchronisation entre Odoo client et Bemade.

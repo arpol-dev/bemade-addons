@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Conflict Tree View -->
+    <record id="view_odoo_sync_conflict_list" model="ir.ui.view">
+        <field name="name">odoo.sync.conflict.list</field>
+        <field name="model">odoo.sync.conflict</field>
+        <field name="arch" type="xml">
+            <list string="Synchronization Conflicts" decoration-danger="state=='pending'" decoration-success="state=='resolved'" decoration-muted="state=='cancelled'">
+                <field name="name"/>
+                <field name="model_name"/>
+                <field name="record_id"/>
+                <field name="create_date"/>
+                <field name="state"/>
+                <field name="resolution"/>
+                <field name="resolved_by"/>
+                <field name="resolved_date"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Conflict Form View -->
+    <record id="view_odoo_sync_conflict_form" model="ir.ui.view">
+        <field name="name">odoo.sync.conflict.form</field>
+        <field name="model">odoo.sync.conflict</field>
+        <field name="arch" type="xml">
+            <form string="Synchronization Conflict">
+                <header>
+                    <button name="action_resolve_local" string="Keep Local" type="object" class="oe_highlight" invisible="state != 'pending'"/>
+                    <button name="action_resolve_remote" string="Keep Remote" type="object" class="oe_highlight" invisible="state != 'pending'"/>
+                    <button name="action_resolve_custom" string="Custom Resolution" type="object" invisible="state != 'pending'"/>
+                    <button name="action_cancel" string="Cancel" type="object" invisible="state != 'pending'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="pending,resolved,cancelled"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="model_name"/>
+                            <field name="record_id"/>
+                            <field name="create_date"/>
+                        </group>
+                        <group>
+                            <field name="resolution" invisible="state == 'pending'"/>
+                            <field name="resolved_by" invisible="state == 'pending'"/>
+                            <field name="resolved_date" invisible="state == 'pending'"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Differences">
+                            <field name="diff_html" widget="html"/>
+                        </page>
+                        <page string="Local Data">
+                            <field name="local_data"/>
+                        </page>
+                        <page string="Remote Data">
+                            <field name="remote_data"/>
+                        </page>
+                        <page string="Custom Data" invisible="resolution != 'custom'">
+                            <field name="custom_data"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Conflict Search View -->
+    <record id="view_odoo_sync_conflict_search" model="ir.ui.view">
+        <field name="name">odoo.sync.conflict.search</field>
+        <field name="model">odoo.sync.conflict</field>
+        <field name="arch" type="xml">
+            <search string="Search Conflicts">
+                <field name="name"/>
+                <field name="model_name"/>
+                <field name="record_id"/>
+                <field name="resolved_by"/>
+                <separator/>
+                <filter string="Pending" name="pending" domain="[('state', '=', 'pending')]"/>
+                <filter string="Resolved" name="resolved" domain="[('state', '=', 'resolved')]"/>
+                <filter string="Cancelled" name="cancelled" domain="[('state', '=', 'cancelled')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="State" name="group_by_state" context="{'group_by': 'state'}"/>
+                    <filter string="Model" name="group_by_model" context="{'group_by': 'model_name'}"/>
+                    <filter string="Resolution" name="group_by_resolution" context="{'group_by': 'resolution'}"/>
+                    <filter string="Resolved By" name="group_by_resolved_by" context="{'group_by': 'resolved_by'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Conflict Resolution Wizard Form -->
+    <record id="view_odoo_sync_conflict_wizard_form" model="ir.ui.view">
+        <field name="name">odoo.sync.conflict.wizard.form</field>
+        <field name="model">odoo.sync.conflict.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Custom Conflict Resolution">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="record_name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="conflict_id" invisible="1"/>
+                            <field name="model_name"/>
+                            <field name="record_id"/>
+                        </group>
+                    </group>
+                    <div class="alert alert-info" role="alert">
+                        <p><strong>Résolution de conflit</strong> - Sélectionnez la source pour chaque champ en conflit:</p>
+                        <ul>
+                            <li><strong>Source</strong>: Conserver la valeur locale</li>
+                            <li><strong>Destination</strong>: Utiliser la valeur distante</li>
+                            <li><strong>Personnalisé</strong>: Définir une valeur personnalisée</li>
+                            <li><strong>Ignorer</strong>: Ne pas synchroniser ce champ</li>
+                        </ul>
+                    </div>
+                    
+                    <notebook>
+                        <page string="Résolution par champ" name="field_resolution">
+                            <field name="resolution_fields">
+                                <list editable="bottom" decoration-info="source=='local'" decoration-success="source=='remote'" decoration-warning="source=='custom'" decoration-muted="source=='ignore'" create="false" delete="false">
+                                    <field name="field_name" string="Champ"/>
+                                    <field name="local_write_date" string="Date locale" widget="datetime" optional="show"/>
+                                    <field name="local_value" string="Valeur locale" widget="text"/>
+                                    <field name="remote_write_date" string="Date distante" widget="datetime" optional="show"/>
+                                    <field name="remote_value" string="Valeur distante" widget="text"/>
+                                    <field name="source" string="Source" widget="radio" options="{'horizontal': true}"/>
+                                    <field name="custom_value" string="Valeur personnalisée" required="source == 'custom'" readonly="source != 'custom'" widget="text"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Aperçu des différences" name="diff_preview">
+                            <field name="diff_html" widget="html"/>
+                        </page>
+                    </notebook>
+                    
+                    <group string="Actions rapides" col="4">
+                        <button name="action_select_all_local" string="Tout local" type="object" class="btn btn-secondary" help="Sélectionner toutes les valeurs locales"/>
+                        <button name="action_select_all_remote" string="Tout distant" type="object" class="btn btn-secondary" help="Sélectionner toutes les valeurs distantes"/>
+                        <button name="action_select_newest" string="Plus récent" type="object" class="btn btn-secondary" help="Sélectionner les valeurs les plus récentes selon les dates de modification"/>
+                        <button name="action_reset_selections" string="Réinitialiser" type="object" class="btn btn-secondary" help="Réinitialiser toutes les sélections"/>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_apply_resolution" string="Appliquer la résolution" type="object" class="btn-primary"/>
+                    <button string="Annuler" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Conflict Action Window -->
+    <record id="action_odoo_sync_conflict" model="ir.actions.act_window">
+        <field name="name">Synchronization Conflicts</field>
+        <field name="res_model">odoo.sync.conflict</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_pending': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No synchronization conflicts found!
+            </p>
+            <p>
+                Conflicts occur when changes are made to the same record on both source and destination instances.
+                When a conflict is detected, it will appear here for manual resolution.
+            </p>
+        </field>
+    </record>
+
+</odoo>

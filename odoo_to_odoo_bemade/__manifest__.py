@@ -15,6 +15,7 @@
     'website': 'https://bemade.org',
     'depends': [
         'base',
+        'project',
         'odoo_to_odoo_sync'
     ],
     'data': [
@@ -23,6 +24,7 @@
         'views/sync_model_views.xml',
         'views/sync_queue_views.xml',
         'views/sync_log_views.xml',
+        'views/project_views.xml',
         'views/menus.xml',
         'data/ir_cron_data.xml',
     ],

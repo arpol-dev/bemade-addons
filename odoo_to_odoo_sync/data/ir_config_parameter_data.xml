@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default conflict resolution strategy -->
+        <record id="default_conflict_strategy_manual" model="ir.config_parameter">
+            <field name="key">odoo_to_odoo_sync.default_conflict_strategy</field>
+            <field name="value">manual</field>
+        </record>
+    </data>
+</odoo>

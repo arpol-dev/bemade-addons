@@ -4,3 +4,4 @@ from . import sync_model_field
 from . import sync_queue
 from . import sync_log
 from . import sync_manager
+from . import project

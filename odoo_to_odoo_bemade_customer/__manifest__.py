@@ -20,6 +20,8 @@
     'data': [
         'security/ir.model.access.csv',
         'views/sync_config_views.xml',
+        'views/sync_model_views.xml',
+        'views/sync_instance_views.xml',
         'views/sync_queue_views.xml',
         'views/sync_log_views.xml',
         'views/menus.xml',

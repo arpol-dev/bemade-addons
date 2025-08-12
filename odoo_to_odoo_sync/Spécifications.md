@@ -3,6 +3,15 @@
 ## Objectif
 Ce module permet la synchronisation bidirectionnelle de données entre deux instances Odoo via XML-RPC, avec un système de validation et de reprise robuste.
 
+## Potential Issues and Fragile Areas
+
+1. Broad Exception Handling: Several files use broad `except Exception` clauses that might hide underlying issues:
+   - `sync_instance.py` has broad exception handling with a pylint disable comment
+   - `sync_manager.py` has multiple broad exception handlers
+   - `sync_observer.py` has broad exception handlers
+
+2. Missing Validation: The previously missing validation logic for payload transformation in `sync_manager.py` has been implemented.
+
 ## Architecture
 
 ### Flux Global

@@ -5,3 +5,7 @@ access_odoo_to_bemade_sync_model_field_admin,odoo.to.bemade.sync.model.field adm
 access_odoo_to_bemade_sync_model_field_user,odoo.to.bemade.sync.model.field user,model_odoo_to_bemade_sync_model_field,base.group_user,1,0,0,0
 access_odoo_to_bemade_instance_admin,odoo.to.bemade.instance admin,model_odoo_to_bemade_instance,base.group_system,1,1,1,1
 access_odoo_to_bemade_instance_user,odoo.to.bemade.instance user,model_odoo_to_bemade_instance,base.group_user,1,0,0,0
+access_odoo_to_bemade_sync_log_admin,odoo.to.bemade.sync.log admin,model_odoo_to_bemade_sync_log,base.group_system,1,1,1,1
+access_odoo_to_bemade_sync_log_user,odoo.to.bemade.sync.log user,model_odoo_to_bemade_sync_log,base.group_user,1,0,0,0
+access_odoo_to_bemade_sync_queue_admin,odoo.to.bemade.sync.queue admin,model_odoo_to_bemade_sync_queue,base.group_system,1,1,1,1
+access_odoo_to_bemade_sync_queue_user,odoo.to.bemade.sync.queue user,model_odoo_to_bemade_sync_queue,base.group_user,1,0,0,0

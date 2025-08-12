@@ -58,7 +58,7 @@ class OdooToBemadeCustomerConfig(models.Model):
             ('testing', 'Test de connexion'),
             ('connected', 'Connecté'),
             ('error', 'Erreur')
-        ], 
+        ],
         default='draft', 
         string='État',
         readonly=True,

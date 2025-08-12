@@ -7,8 +7,8 @@
         <field name="arch" type="xml">
             <form string="Instance Client Bemade">
                 <header>
-                    <button name="test_connection" string="Tester la connexion" type="object" class="oe_highlight" 
-                            attrs="{'invisible': [('state', '=', 'connected')]}"/>
+                    <button name="test_connection" string="Tester la connexion" type="object" class="oe_highlight"
+                            invisible="state == 'connected'"/>
                     <field name="state" widget="statusbar" 
                            statusbar_visible="draft,testing,error,connected"/>
                 </header>
@@ -20,14 +20,13 @@
                     <group>
                         <group>
                             <field name="url" placeholder="https://example.odoo.com" 
-                                   attrs="{'readonly': [('state', '=', 'connected')]}"/>
-                            <field name="database" attrs="{'readonly': [('state', '=', 'connected')]}"/>
-                            <field name="partner_id"/>
+                                   readonly="state == 'connected'"/>
+                            <field name="database" readonly="state == 'connected'"/>
                         </group>
                         <group>
-                            <field name="username" attrs="{'readonly': [('state', '=', 'connected')]}"/>
-                            <field name="password" password="True" attrs="{'readonly': [('state', '=', 'connected')]}"/>
-                            <field name="api_key" password="True" attrs="{'readonly': [('state', '=', 'connected')]}"/>
+                            <field name="username" readonly="state == 'connected'"/>
+                            <field name="password" password="True" readonly="state == 'connected'"/>
+                            <field name="api_key" password="True" readonly="state == 'connected'"/>
                         </group>
                     </group>
                     <group>
@@ -36,37 +35,34 @@
                     </group>
                     <notebook>
                         <page string="Modèles synchronisés">
-                            <field name="sync_model_ids">
-                                <tree>
+                            <field name="model_ids">
+                                <list>
                                     <field name="name"/>
                                     <field name="model"/>
-                                    <field name="customer_model"/>
+                                    <field name="bemade_model"/>
                                     <field name="active"/>
-                                </tree>
+                                </list>
                             </field>
                         </page>
                         <page string="Options avancées">
                             <group>
-                                <field name="timeout"/>
+                                <field name="connection_timeout"/>
                                 <field name="retry_count"/>
                                 <field name="retry_delay"/>
-                                <field name="customer_version"/>
                             </group>
                         </page>
                         <page string="Journal de connexion">
                             <field name="log_ids">
-                                <tree>
+                                <list>
                                     <field name="create_date"/>
                                     <field name="name"/>
                                     <field name="result"/>
-                                </tree>
+                                </list>
                             </field>
                         </page>
                     </notebook>
                 </sheet>
                 <div class="oe_chatter">
-                    <field name="message_follower_ids"/>
-                    <field name="message_ids"/>
                 </div>
             </form>
         </field>
@@ -77,15 +73,14 @@
         <field name="name">odoo.to.bemade.customer.instance.tree</field>
         <field name="model">odoo.to.bemade.customer.instance</field>
         <field name="arch" type="xml">
-            <tree string="Instances Client" decoration-success="state == 'connected'" decoration-danger="state == 'error'" decoration-info="state == 'testing'" decoration-muted="state == 'draft'">
+            <list string="Instances Client" decoration-success="state == 'connected'" decoration-danger="state == 'error'" decoration-info="state == 'testing'" decoration-muted="state == 'draft'">
                 <field name="name"/>
                 <field name="url"/>
                 <field name="database"/>
-                <field name="partner_id"/>
                 <field name="connection_type"/>
                 <field name="state"/>
                 <field name="active" invisible="1"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -98,12 +93,10 @@
                 <field name="name"/>
                 <field name="url"/>
                 <field name="database"/>
-                <field name="partner_id"/>
                 <filter string="Actives" name="active" domain="[('active', '=', True)]"/>
                 <filter string="Connectées" name="connected" domain="[('state', '=', 'connected')]"/>
                 <filter string="En erreur" name="error" domain="[('state', '=', 'error')]"/>
                 <group expand="0" string="Regrouper par">
-                    <filter string="Client" name="groupby_partner" domain="[]" context="{'group_by': 'partner_id'}"/>
                     <filter string="État" name="groupby_state" domain="[]" context="{'group_by': 'state'}"/>
                     <filter string="Type de connexion" name="groupby_connection_type" domain="[]" context="{'group_by': 'connection_type'}"/>
                 </group>
@@ -115,8 +108,8 @@
     <record id="action_odoo_to_bemade_customer_instances" model="ir.actions.act_window">
         <field name="name">Instances Client</field>
         <field name="res_model">odoo.to.bemade.customer.instance</field>
-        <field name="view_mode">tree,form</field>
-        <field name="context">{'search_default_active': 1}</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{"search_default_active": 1}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
                 Créer votre première instance de connexion client

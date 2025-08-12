@@ -10,6 +10,7 @@ tracking of synchronization tasks.
 
 import json
 import logging
+from datetime import timedelta
 
 from odoo import api, fields, models
 
@@ -141,8 +142,8 @@ class OdooSyncQueue(models.Model):
         This method is called by the cron job to process pending queue entries.
         It will:
         1. Find pending entries that are ready for processing
-        2. Process each entry according to its operation type
-        3. Update the entry status and create log entries
+        2. Dequeue each entry and pass it to the sync manager for processing
+        3. Update the entry status based on the processing result
         
         Returns:
             bool: True if processing completed successfully
@@ -157,48 +158,79 @@ class OdooSyncQueue(models.Model):
         entries = self.search(domain, order='priority desc, retry_count, create_date')
         
         for entry in entries:
-            try:
-                # Mark as processing
-                entry.write({'state': 'processing'})
-                
-                # TODO: Implement actual synchronization logic here
-                # This will be implemented in a future update
-                
-                # For now, just mark as done
-                entry.write({'state': 'done'})
-                
-                # Create success log
-                self.env['odoo.sync.log'].create({
-                    'queue_id': entry.id,
-                    'state': 'success',
-                    'message': 'Synchronization completed successfully'
-                })
-                
-            except Exception as e:
-                _logger.error('Error processing queue entry %s: %s', entry.name, str(e))
-                
-                # Update retry count and status
-                vals = {
-                    'state': 'error',
-                    'retry_count': entry.retry_count + 1,
-                    'error_message': str(e)
-                }
-                
-                # Schedule next retry if not exceeded max retries
-                if entry.retry_count < entry.max_retries:
-                    vals.update({
-                        'state': 'pending',
-                        'next_retry': fields.Datetime.now() + timedelta(minutes=5 * (entry.retry_count + 1))
-                    })
-                
-                entry.write(vals)
-                
-                # Create error log
-                self.env['odoo.sync.log'].create({
-                    'queue_id': entry.id,
-                    'state': 'error',
-                    'message': str(e),
-                    'details': str(e)
-                })
+            # Dequeue the item and process it
+            sync_manager = self.env['odoo.sync.manager']
+            sync_manager._process_dequeued_item(self.dequeue(entry.id))
+            
+        return True
+    
+    @api.model
+    def dequeue(self, queue_id):
+        """Dequeue a specific queue item for processing.
+        
+        This method explicitly implements the "Dequeue" step in the synchronization
+        sequence diagram. It marks the queue item as processing and returns it
+        for further processing by the sync manager.
+        
+        Args:
+            queue_id: ID of the queue item to dequeue
+            
+        Returns:
+            odoo.sync.queue: The dequeued queue item record or False if not found
+        """
+        queue_item = self.browse(queue_id)
+        if not queue_item.exists():
+            _logger.error(f"[SYNC QUEUE] Cannot dequeue item {queue_id}: record not found")
+            return False
+            
+        _logger.debug(f"[SYNC QUEUE] Dequeuing item {queue_id}")
+        queue_item.write({'state': 'processing'})
+        return queue_item
+        
+    def mark_success(self):
+        """Mark this queue item as successfully processed.
+        
+        This method implements the 'Mark Success' step in the synchronization sequence diagram.
+        """
+        _logger.debug(f"[SYNC QUEUE] Marking item {self.id} as done")
+        self.write({'state': 'done'})
+        
+        # Create success log
+        self.env['odoo.sync.log'].create({
+            'queue_id': self.id,
+            'state': 'success',
+            'message': f'Synchronisation réussie'
+        })
+        
+    def increment_retry(self, error_message):
+        """Increment the retry count for this queue item.
+        
+        This method implements the 'Increment Retry' step in the synchronization sequence diagram.
+        
+        Args:
+            error_message: The error message to log
+        """
+        _logger.debug(f"[SYNC QUEUE] Incrementing retry count for item {self.id}")
+        
+        vals = {
+            'state': 'error',
+            'error_message': error_message,
+            'retry_count': self.retry_count + 1
+        }
+        
+        if self.retry_count + 1 < self.max_retries:
+            # Exponential backoff
+            delay = 2 ** (self.retry_count + 1)
+            vals['next_retry'] = fields.Datetime.now() + timedelta(minutes=delay)
+        
+        self.write(vals)
+        
+        # Create error log
+        self.env['odoo.sync.log'].create({
+            'queue_id': self.id,
+            'state': 'error',
+            'message': error_message,
+            'details': error_message
+        })
         
         return True
