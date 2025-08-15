@@ -106,9 +106,17 @@ class OdooToBemadeInstance(models.Model):
     _inherit = 'odoo.sync.instance'
 
     # Champs spécifiques à Bemade
-    api_key = fields.Char(
+    api_key_id = fields.Many2one(
+        'odoo.to.bemade.api.key',
         string='API Key',
-        help='Optional API key for authentication with Bemade instance',
+        help='API key for authentication with Bemade instance',
+        domain=[('is_active', '=', True)],
+    )
+    
+    use_api_key = fields.Boolean(
+        string='Use API Key',
+        default=False,
+        help='Use API key instead of password for authentication',
     )
     
     # Override connection_type to add OdooRPC option
@@ -223,6 +231,88 @@ class OdooToBemadeInstance(models.Model):
         
         return result
 
+    def _test_xmlrpc_connection(self):
+        """Override parent's XML-RPC connection test to support API key authentication."""
+        self.ensure_one()
+        try:
+            # Validate URL format
+            if not self.url:
+                raise UserError("L'URL est requise pour tester la connexion")
+                
+            # Parse URL to extract connection details
+            parsed_url = urlparse(self.url)
+            if not parsed_url.scheme or not parsed_url.netloc:
+                raise UserError("Format d'URL invalide. Exemple valide: https://exemple.odoo.com")
+            
+            # Get authentication credentials
+            if self.use_api_key and self.api_key_id:
+                # Use API key for authentication
+                auth_key = self.api_key_id.key_hash  # In production, this would be the hashed key
+                # Record usage of the API key
+                self.api_key_id.record_usage()
+            else:
+                # Use password for authentication
+                auth_key = self._decrypt_sensitive_data()
+                
+            # Attempt to connect and authenticate
+            common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
+            uid = common.authenticate(self.database, self.username, auth_key, {})
+            
+            if uid:
+                self.write({
+                    'state': 'connected',
+                    'last_connection': fields.Datetime.now(),
+                    'error_message': False
+                })
+                return True
+            else:
+                raise UserError('Échec d\'authentification')
+                
+        except UserError as e:
+            # Pass through our UserError without modification
+            self.write({
+                'state': 'error',
+                'error_message': str(e)
+            })
+            _logger.error("Erreur d'authentification XML-RPC: %s", str(e))
+            return False
+            
+        except (ConnectionError, TimeoutError, xmlrpc.client.Fault, xmlrpc.client.ProtocolError) as e:
+            # Catch specific exceptions that can be raised during XML-RPC connection
+            self.write({
+                'state': 'error',
+                'error_message': str(e)
+            })
+            _logger.error("Erreur de connexion XML-RPC: %s", str(e))
+            return False
+            
+        except Exception as e:  # pylint: disable=broad-except
+            # Fall back for any unexpected exceptions
+            self.write({
+                'state': 'error',
+                'error_message': f"Erreur inattendue: {str(e)}"
+            })
+            _logger.error("Erreur inattendue XML-RPC: %s", str(e))
+            return False
+
+    def _get_xmlrpc_connection(self):
+        """Override parent's XML-RPC connection method to support API key authentication."""
+        # Get authentication credentials
+        if self.use_api_key and self.api_key_id:
+            # Use API key for authentication
+            auth_key = self.api_key_id.key_hash  # In production, this would be the hashed key
+            # Record usage of the API key
+            self.api_key_id.record_usage()
+        else:
+            # Use password for authentication
+            auth_key = self._decrypt_sensitive_data()
+        
+        common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
+        uid = common.authenticate(self.database, self.username, auth_key, {})
+        models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object')
+        
+        return models, uid
+
     def _test_odoorpc_connection(self):
         """Test connection using OdooRPC library.
         
@@ -263,7 +353,15 @@ class OdooToBemadeInstance(models.Model):
             )
             
             # Try to login with credentials
-            odoo.login(self.database, self.username, self.password)
+            if self.use_api_key and self.api_key_id:
+                # Use API key for authentication
+                api_key = self.api_key_id.key_hash  # In production, this would be the hashed key
+                odoo.login(self.database, self.username, api_key)
+                # Record usage of the API key
+                self.api_key_id.record_usage()
+            else:
+                # Use password for authentication
+                odoo.login(self.database, self.username, self.password)
             
             # If successful, update record state
             if odoo.env:

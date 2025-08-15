@@ -12,11 +12,12 @@
     """,
     'author': 'Bemade',
     'website': 'https://bemade.org',
-    'depends': ['base'],
+    'depends': ['base', 'project'],
     'data': [
         'security/security.xml',
         'data/ir_model_data.xml',
         'data/ir_config_parameter_data.xml',
+        'wizards/auto_sync_wizard_view.xml',
         'security/ir.model.access.csv',
         'views/sync_instance_views.xml',
         'views/sync_model_views.xml',
@@ -27,6 +28,10 @@
         'views/menus.xml',
         'data/ir_cron_data.xml',
     ],
+    'assets': {
+        'web.assets_backend': [
+        ],
+    },
     'installable': True,
     'application': True,
     'license': 'LGPL-3',

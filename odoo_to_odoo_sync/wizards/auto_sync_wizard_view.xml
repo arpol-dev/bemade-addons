@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_auto_sync_wizard_form" model="ir.ui.view">
+        <field name="name">Auto Sync Fields Configuration</field>
+        <field name="model">odoo.sync.auto.sync.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Auto Sync Fields">
+                <sheet>
+                    <group>
+                        <field name="sync_model_id" invisible="1"/>
+                        <group string="Field Selection Mode">
+                            <field name="mode" widget="radio"/>
+                        </group>
+                        <group string="Mode Descriptions">
+                            <div class="alert alert-info" role="alert">
+                                <strong>Full:</strong> All usable fields will be added<br/>
+                                <strong>Required:</strong> Only required fields will be added
+                            </div>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_auto_sync_fields" string="Apply" type="object" class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_auto_sync_wizard" model="ir.actions.act_window">
+        <field name="name">Auto Sync Fields</field>
+        <field name="res_model">odoo.sync.auto.sync.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="model_odoo_sync_model"/>
+        <field name="binding_type">action</field>
+    </record>
+</odoo>

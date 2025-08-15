@@ -17,3 +17,8 @@ access_odoo_sync_conflict_wizard_user,odoo.sync.conflict.wizard.user,model_odoo_
 access_odoo_sync_conflict_wizard_admin,odoo.sync.conflict.wizard.admin,model_odoo_sync_conflict_wizard,odoo_to_odoo_sync.group_odoo_sync_manager,1,1,1,1
 access_odoo_sync_conflict_wizard_field_user,odoo.sync.conflict.wizard.field.user,model_odoo_sync_conflict_wizard_field,odoo_to_odoo_sync.group_odoo_sync_user,1,1,1,0
 access_odoo_sync_conflict_wizard_field_admin,odoo.sync.conflict.wizard.field.admin,model_odoo_sync_conflict_wizard_field,odoo_to_odoo_sync.group_odoo_sync_manager,1,1,1,1
+access_odoo_sync_auto_sync_wizard_user,odoo.sync.auto.sync.wizard.user,model_odoo_sync_auto_sync_wizard,base.group_user,1,1,1,0
+access_odoo_sync_auto_sync_wizard_admin,odoo.sync.auto.sync.wizard.admin,model_odoo_sync_auto_sync_wizard,base.group_system,1,1,1,1
+
+access_odoo_sync_auto_sync_wizard_user,odoo.sync.auto.sync.wizard.user,model_odoo_sync_auto_sync_wizard,base.group_user,1,1,1,0
+access_odoo_sync_auto_sync_wizard_admin,odoo.sync.auto.sync.wizard.admin,model_odoo_sync_auto_sync_wizard,base.group_system,1,1,1,1

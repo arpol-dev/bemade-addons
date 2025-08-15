@@ -33,6 +33,7 @@ _logger = logging.getLogger(__name__)
 
 _msg_import_logger = logging.getLogger("msg.import")
 
+<<<<<<< HEAD
 # BV: THIS IS FOR REMOVING ERROR IN DEV
 # DO WE STILL NEED IT
 #handler = logging.FileHandler("/var/log/odoo/msg_import.log")
@@ -40,6 +41,10 @@ _msg_import_logger = logging.getLogger("msg.import")
 #handler.setFormatter(formatter)
 #_msg_import_logger.addHandler(handler)
 #_msg_import_logger.setLevel(logging.ERROR)
+=======
+# Use standard Odoo logger instead of file handler to avoid directory issues
+_msg_import_logger.setLevel(logging.ERROR)
+>>>>>>> 979196f ([IMP] odoo_to_odoo_sync: implement dependency management, fix connection errors, and add field mapping)
 
 class IrAttachment(models.Model):
     _inherit = "ir.attachment"

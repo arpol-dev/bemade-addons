@@ -24,6 +24,7 @@
                         <button name="toggle_active" type="object" class="oe_stat_button" icon="fa-archive">
                             <field name="active" widget="boolean_button"/>
                         </button>
+                        <button name="action_auto_sync_fields" type="object" class="oe_stat_button" icon="fa-magic" string="Auto Sync Fields"/>
                     </div>
                     <group>
                         <group>
@@ -40,12 +41,45 @@
                         <page string="Champs synchronisés">
                             <field name="field_ids" context="{'default_model_sync_id': id}">
                                 <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
                                     <field name="field_id" options="{'no_create': True}"/>
                                     <field name="name" readonly="1"/>
+                                    <field name="mapping_type"/>
                                     <field name="required"/>
                                     <field name="sync_default" placeholder="Valeur par défaut si vide"/>
                                     <field name="conflict_strategy" widget="radio"/>
                                 </list>
+                                <form>
+                                    <sheet>
+                                        <group>
+                                            <group>
+                                                <field name="field_id" options="{'no_create': True}"/>
+                                                <field name="name" readonly="1"/>
+                                                <field name="source_field" placeholder="Ex: name"/>
+                                                <field name="target_field" placeholder="Ex: display_name"/>
+                                            </group>
+                                            <group>
+                                                <field name="mapping_type"/>
+                                                <field name="required"/>
+                                                <field name="is_identifier"/>
+                                                <field name="active"/>
+                                            </group>
+                                        </group>
+                                        <group string="Configuration avancée" attrs="{'invisible': [('mapping_type', '=', 'direct')]}">
+                                            <group string="Mapping Fonction" attrs="{'invisible': [('mapping_type', '!=', 'function')]}">
+                                                <field name="mapping_function" placeholder="Ex: res.partner.get_display_name"/>
+                                            </group>
+                                            <group string="Mapping Calculé" attrs="{'invisible': [('mapping_type', '!=', 'computed')]}">
+                                                <field name="mapping_expression" placeholder="Ex: record.name.upper()"/>
+                                            </group>
+                                            <group string="Mapping Relation" attrs="{'invisible': [('mapping_type', '!=', 'relation')]}">
+                                                <field name="relation_model" placeholder="Ex: res.partner"/>
+                                                <field name="relation_field" placeholder="Ex: email"/>
+                                                <field name="relation_domain" placeholder='[[("active", "=", True)]]'/>
+                                            </group>
+                                        </group>
+                                    </sheet>
+                                </form>
                             </field>
                         </page>
                     </notebook>

@@ -1,15 +1,12 @@
 {
     'name': 'Odoo to Odoo Bemade',
-    'version': '18.0.1.0.0',
+    'version': '18.0.2.0.0',
     'category': 'Technical',
-    'summary': 'Connecteur universel Bemade pour synchronisation avec instances Odoo',
+    'summary': 'Configuration Bemade pour synchronisation avec instances Odoo',
     'description': """
-        Module de synchronisation pour Bemade avec n'importe quelle instance Odoo
-        - Support multi-instances
-        - Synchronisation asynchrone
-        - Gestion des conflits
-        - Monitoring et reprise sur erreur
-        - Interface administrateur avancée
+        Configuration pré-définie Bemade pour la synchronisation avec instances Odoo.
+        Ce module est un wrapper minimal qui fournit la configuration par défaut
+        pour les instances Bemade.
     """,
     'author': 'Bemade',
     'website': 'https://bemade.org',
@@ -19,16 +16,11 @@
         'odoo_to_odoo_sync'
     ],
     'data': [
-        'security/ir.model.access.csv',
-        'views/sync_instance_views.xml',
-        'views/sync_model_views.xml',
-        'views/sync_queue_views.xml',
-        'views/sync_log_views.xml',
-        'views/project_views.xml',
+        'data/ir_config_parameter_data.xml',
         'views/menus.xml',
-        'data/ir_cron_data.xml',
     ],
     'installable': True,
-    'application': True,
+    'application': False,
     'license': 'LGPL-3',
+    'post_init_hook': 'post_init_hook',
 }

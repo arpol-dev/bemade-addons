@@ -46,5 +46,10 @@
             <field name="name">Odoo Sync Conflict Wizard Field</field>
             <field name="model">odoo.sync.conflict.wizard.field</field>
         </record>
+        
+        <record id="model_odoo_sync_auto_sync_wizard" model="ir.model">
+            <field name="name">Auto Sync Fields Configuration</field>
+            <field name="model">odoo.sync.auto.sync.wizard</field>
+        </record>
     </data>
 </odoo>

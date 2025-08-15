@@ -42,12 +42,43 @@ class OdooSyncModelField(models.Model):
         help='Field name in the target model'
     )
     
-    transform_type = fields.Selection([
+    mapping_type = fields.Selection([
         ('direct', 'Direct'),
         ('function', 'Function'),
+        ('computed', 'Computed'),
         ('relation', 'Relation')
-    ], string='Transform Type', default='direct',
-       help='How to transform the field value during synchronization')
+    ], string='Mapping Type', default='direct',
+       help='Type of field mapping for synchronization')
+
+    mapping_function = fields.Char(
+        string='Mapping Function',
+        help='Python function name to transform the field value. Use format: model.method_name or method_name'
+    )
+    
+    mapping_expression = fields.Text(
+        string='Mapping Expression',
+        help='Python expression for computed field mapping. Use record.field_name syntax'
+    )
+    
+    relation_model = fields.Char(
+        string='Relation Model',
+        help='Target model for relation mapping (e.g., res.partner, product.category)'
+    )
+    
+    relation_field = fields.Char(
+        string='Relation Field',
+        help='Field to match in the relation model (e.g., name, code)'
+    )
+    
+    relation_domain = fields.Text(
+        string='Relation Domain',
+        help='Domain filter for relation mapping as JSON list of tuples'
+    )
+    
+    transform_function = fields.Char(
+        string='Transform Function',
+        help='Function to transform field value (deprecated, use mapping_function instead)'
+    )
     
     is_identifier = fields.Boolean(
         string='Is Identifier',

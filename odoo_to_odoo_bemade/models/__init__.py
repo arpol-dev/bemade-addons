@@ -5,3 +5,5 @@ from . import sync_queue
 from . import sync_log
 from . import sync_manager
 from . import project
+from . import api_key
+from . import api_key_wizard

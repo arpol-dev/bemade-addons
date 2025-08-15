@@ -371,6 +371,71 @@ class OdooSyncManager(models.Model):
         })
         
         return True
+
+    def _check_dependencies(self, queue_item):
+        """Check if all dependencies are satisfied for this queue item.
+        
+        Args:
+            queue_item: The queue item to check dependencies for
+            
+        Returns:
+            bool: True if dependencies are satisfied, False otherwise
+        """
+        try:
+            resolver = self.env['odoo.sync.dependency.resolver']
+            return resolver.resolve_missing_dependencies(queue_item)
+        except Exception as e:
+            _logger.error(f"[SYNC MANAGER] Error checking dependencies for queue item {queue_item.id}: {str(e)}")
+            return True  # Allow processing to continue if dependency check fails
+
+    def _handle_missing_dependency(self, queue_item, error_message):
+        """Handle missing dependency during synchronization.
+        
+        Args:
+            queue_item: The queue item with missing dependencies
+            error_message: The error message indicating missing dependencies
+        """
+        _logger.debug(f"[SYNC MANAGER] [SEQUENCE STEP] Handling missing dependency for queue item {queue_item.id}")
+        
+        # Increment retry count with dependency-specific handling
+        queue_item.write({
+            'retry_count': queue_item.retry_count + 1,
+            'next_retry': fields.Datetime.now() + timedelta(minutes=5),  # Longer delay for dependencies
+            'error_message': f"Missing dependency: {error_message}"
+        })
+        
+        # Create dependency-specific log
+        self.env['odoo.sync.log'].create({
+            'queue_id': queue_item.id,
+            'state': 'error',
+            'message': f"Missing dependency detected: {error_message}"
+        })
+        
+        return True
+
+    def update_model_dependencies(self, model_sync_ids=None):
+        """Update dependency information for synchronized models.
+        
+        Args:
+            model_sync_ids: List of model sync IDs to analyze. If None, analyzes all active models.
+        """
+        if model_sync_ids is None:
+            model_sync_ids = self.env['odoo.sync.model'].search([('active', '=', True)]).ids
+        
+        if not model_sync_ids:
+            return
+            
+        try:
+            resolver = self.env['odoo.sync.dependency.resolver']
+            analysis = resolver.analyze_model_dependencies(model_sync_ids)
+            
+            # Log dependency analysis results
+            _logger.info(f"[SYNC MANAGER] Updated dependencies for {len(model_sync_ids)} models")
+            if analysis['cycles']:
+                _logger.warning(f"[SYNC MANAGER] Detected circular dependencies: {analysis['cycles']}")
+                
+        except Exception as e:
+            _logger.error(f"[SYNC MANAGER] Error updating model dependencies: {str(e)}")
         
     def _handle_sync_conflict(self, queue_item, local_data, remote_data):
         """Handle synchronization conflict.
@@ -755,7 +820,7 @@ class OdooSyncManager(models.Model):
         """Prépare les données pour l'envoi vers l'instance distante
         
         Cette méthode transforme les données JSON-sérialisées en format compatible
-        avec l'API Odoo de l'instance distante.
+        avec l'API Odoo de l'instance distante, en appliquant les mappings avancés.
         """
         _logger.debug(f"[SYNC MANAGER] [SEQUENCE STEP] Preparing sync data for queue item {queue_item.id} - Payload Preparation")
         result = {}
@@ -766,8 +831,14 @@ class OdooSyncManager(models.Model):
             _logger.error(f"[SYNC MANAGER] No sync model found for queue item {queue_item.id}")
             return data
         
-        # Récupérer les champs à synchroniser si spécifiés
-        sync_fields = sync_model.field_ids.mapped('field_id.name') if hasattr(sync_model, 'field_ids') and sync_model.field_ids else None
+        # Get the original record for advanced mapping
+        record = self.env[sync_model.model_id.model].browse(queue_item.record_id)
+        if not record.exists():
+            _logger.error(f"[SYNC MANAGER] Record {queue_item.record_id} not found in model {sync_model.model_id.model}")
+            return data
+        
+        # Get all configured field mappings
+        field_mappings = sync_model.field_ids
         
         # Supprimer les champs système et les champs non synchronisés
         excluded_fields = ['id', 'write_date', 'create_date', 'write_uid', 'create_uid', '__last_update']
@@ -776,63 +847,153 @@ class OdooSyncManager(models.Model):
         if queue_item.operation in ['write', 'unlink'] and 'id' in data:
             result['id'] = data['id']
         
-        for key, value in data.items():
-            # Skip ID for create operations, we already handled it for write/unlink
-            if key == 'id' and queue_item.operation == 'create':
+        # Process each field mapping
+        for field_mapping in field_mappings:
+            if not field_mapping.active:
                 continue
                 
-            # Ignorer les champs système et les champs non synchronisés
-            if key in excluded_fields and key != 'id':
+            field_name = field_mapping.field_id.name
+            target_field = field_mapping.target_field or field_name
+            
+            try:
+                value = self._apply_field_mapping(field_mapping, record, data.get(field_name))
+                if value is not None:
+                    result[target_field] = value
+                    
+            except Exception as e:
+                _logger.error(f"[SYNC MANAGER] Error applying mapping for field {field_name}: {str(e)}")
+                if field_mapping.required:
+                    raise
                 continue
-                
-            if sync_fields and key not in sync_fields and key != 'id':
-                continue
-                
-            # Traitement des champs binaires encodés en base64
-            if isinstance(value, str) and sync_model.field_ids and sync_model.field_ids.filtered(lambda f: f.field_id.name == key and f.field_id.ttype == 'binary'):
-                try:
-                    # Pas besoin de décoder, Odoo accepte les chaînes base64 pour les champs binaires
-                    result[key] = value
-                except Exception as e:
-                    _logger.warning(f"[SYNC MANAGER] Erreur lors du traitement du champ binaire {key}: {str(e)}")
-                    continue
-            # Traitement des relations many2one (stockées comme dictionnaires)
-            elif isinstance(value, dict) and 'id' in value and 'name' in value:
-                # Pour les relations many2one, on envoie uniquement l'ID
-                result[key] = value['id']
-            # Traitement des relations one2many/many2many (stockées comme listes de dictionnaires)
-            elif isinstance(value, list) and all(isinstance(item, dict) and 'id' in item for item in value):
-                # Pour les relations one2many/many2many, on envoie une liste d'IDs
-                result[key] = [(6, 0, [item['id'] for item in value])]
-            else:
-                result[key] = value
-                
+        
         _logger.debug(f"[SYNC MANAGER] [SEQUENCE STEP] Prepared sync data for queue item {queue_item.id}: {result}")
+        return result
+
+    def _apply_field_mapping(self, field_mapping, record, original_value):
+        """Apply advanced field mapping based on mapping type.
+        
+        Args:
+            field_mapping: The field mapping configuration
+            record: The source record being synchronized
+            original_value: The original field value
+            
+        Returns:
+            The transformed value for synchronization
+        """
+        mapping_type = field_mapping.mapping_type
+        
+        if mapping_type == 'direct':
+            # Direct mapping - return value as-is
+            return original_value
+            
+        elif mapping_type == 'function':
+            # Function mapping - execute specified function
+            if not field_mapping.mapping_function:
+                _logger.warning(f"[SYNC MANAGER] Function mapping requested but no function specified for field {field_mapping.name}")
+                return original_value
+                
+            try:
+                # Parse function name - can be model.method_name or just method_name
+                func_name = field_mapping.mapping_function
+                if '.' in func_name:
+                    model_name, method_name = func_name.split('.', 1)
+                    model = self.env[model_name]
+                    if hasattr(model, method_name):
+                        method = getattr(model, method_name)
+                        return method(record, original_value)
+                    else:
+                        _logger.error(f"[SYNC MANAGER] Method {method_name} not found in model {model_name}")
+                        return original_value
+                else:
+                    # Try to find method on the record's model
+                    if hasattr(record, func_name):
+                        method = getattr(record, func_name)
+                        return method(original_value)
+                    else:
+                        _logger.error(f"[SYNC MANAGER] Method {func_name} not found on record")
+                        return original_value
+                        
+            except Exception as e:
+                _logger.error(f"[SYNC MANAGER] Error executing function mapping for field {field_mapping.name}: {str(e)}")
+                if field_mapping.required:
+                    raise
+                return original_value
+                
+        elif mapping_type == 'computed':
+            # Computed mapping - evaluate expression
+            if not field_mapping.mapping_expression:
+                _logger.warning(f"[SYNC MANAGER] Computed mapping requested but no expression specified for field {field_mapping.name}")
+                return original_value
+                
+            try:
+                # Create safe evaluation context
+                context = {
+                    'record': record,
+                    'value': original_value,
+                    'env': self.env,
+                    'datetime': __import__('datetime'),
+                    'date': __import__('datetime').date,
+                    'time': __import__('time'),
+                    'json': __import__('json'),
+                    'str': str,
+                    'int': int,
+                    'float': float,
+                    'bool': bool,
+                    'len': len,
+                }
+                
+                # Evaluate expression safely
+                result = eval(field_mapping.mapping_expression, {"__builtins__": {}}, context)
+                return result
+                
+            except Exception as e:
+                _logger.error(f"[SYNC MANAGER] Error evaluating computed expression for field {field_mapping.name}: {str(e)}")
+                if field_mapping.required:
+                    raise
+                return original_value
+                
+        elif mapping_type == 'relation':
+            # Relation mapping - find related record by field value
+            if not field_mapping.relation_model or not field_mapping.relation_field:
+                _logger.warning(f"[SYNC MANAGER] Relation mapping requested but missing model or field for {field_mapping.name}")
+                return original_value
+                
+            try:
+                relation_model = self.env[field_mapping.relation_model]
+                
+                # Build domain
+                domain = [(field_mapping.relation_field, '=', original_value)]
+                
+                # Add additional domain if specified
+                if field_mapping.relation_domain:
+                    try:
+                        additional_domain = __import__('json').loads(field_mapping.relation_domain)
+                        if isinstance(additional_domain, list):
+                            domain.extend(additional_domain)
+                    except __import__('json').JSONDecodeError:
+                        _logger.warning(f"[SYNC MANAGER] Invalid relation domain JSON for field {field_mapping.name}")
+                
+                # Search for related record
+                related_records = relation_model.search(domain, limit=1)
+                if related_records:
+                    return related_records.id
+                else:
+                    _logger.warning(f"[SYNC MANAGER] No related record found in {field_mapping.relation_model} with {field_mapping.relation_field}={original_value}")
+                    return None
+                    
+            except Exception as e:
+                _logger.error(f"[SYNC MANAGER] Error in relation mapping for field {field_mapping.name}: {str(e)}")
+                if field_mapping.required:
+                    raise
+                return original_value
+        
+        else:
+            _logger.warning(f"[SYNC MANAGER] Unknown mapping type: {mapping_type}")
+            return original_value
     
     def set_conflict_strategy(self):
         """Set the system parameter for conflict resolution strategy based on the selected value."""
         self.ensure_one()
         if self.conflict_resolution_strategy:
             self.env['ir.config_parameter'].sudo().set_param(
-                'odoo_to_odoo_sync.default_conflict_strategy', 
-                self.conflict_resolution_strategy)
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': 'Success',
-                'message': 'Conflict resolution strategy updated successfully',
-                'type': 'success',
-            }
-        }
-    
-    @api.model
-    def init_conflict_strategy(self):
-        """Initialize the conflict resolution strategy from system parameters."""
-        strategy = self.env['ir.config_parameter'].sudo().get_param(
-            'odoo_to_odoo_sync.default_conflict_strategy', 'manual')
-        manager = self.search([], limit=1)
-        if manager:
-            manager.write({'conflict_resolution_strategy': strategy})
-        return True
-        return result
+                'odoo_to_odoo_sync.default_conflict_strategy', self.conflict_resolution_strategy) 

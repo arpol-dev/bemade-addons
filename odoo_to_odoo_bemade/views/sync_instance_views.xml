@@ -18,14 +18,26 @@
                     </div>
                     <group>
                         <group>
-                            <field name="url" placeholder="https://exemple.bemade.org" 
-                                   readonly="state == 'connected'"/>
-                            <field name="database" readonly="state == 'connected'"/>
+                            <field name="url" placeholder="https://exemple.bemade.org">
+                                <attribute name="readonly">state == 'connected'</attribute>
+                            </field>
+                            <field name="database">
+                                <attribute name="readonly">state == 'connected'</attribute>
+                            </field>
                         </group>
                         <group>
-                            <field name="username" readonly="state == 'connected'"/>
-                            <field name="password" password="True" readonly="state == 'connected'"/>
-                            <field name="api_key" password="True" readonly="state == 'connected'"/>
+                            <field name="username">
+                                <attribute name="readonly">state == 'connected'</attribute>
+                            </field>
+                            <field name="use_api_key" widget="boolean_toggle"/>
+                            <field name="password" password="True">
+                                <attribute name="readonly">state == 'connected'</attribute>
+                                <attribute name="invisible">use_api_key</attribute>
+                            </field>
+                            <field name="api_key_id">
+                                <attribute name="invisible">not use_api_key</attribute>
+                                <attribute name="required">use_api_key</attribute>
+                            </field>
                         </group>
                     </group>
                     <group>

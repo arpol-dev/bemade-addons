@@ -1,5 +1,6 @@
 from . import models
 from . import utils
+from . import wizards
 import logging
 
 _logger = logging.getLogger(__name__)

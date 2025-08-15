@@ -43,11 +43,11 @@
                         <group>
                             <field name="url" placeholder="https://example.odoo.com"/>
                             <field name="database"/>
-                            <!-- <field name="conflict_resolution_strategy"/> -->
+                            <field name="connection_type" widget="radio"/>
                         </group>
                         <group>
                             <field name="username"/>
-                            <field name="password" password="True"/>
+                            <field name="api_key" password="True" required="1"/>
                             <field name="last_connection" readonly="1"/>
                         </group>
                     </group>

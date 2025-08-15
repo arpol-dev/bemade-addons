@@ -4,19 +4,18 @@
 Ce module permet la synchronisation bidirectionnelle de données entre deux instances Odoo via XML-RPC, avec un système de validation et de reprise robuste.
 
 ## Potential Issues and Fragile Areas
+**Broad Exception Handling**: Plusieurs fichiers utilisent des clauses `except Exception` trop larges qui pourraient masquer des problèmes sous-jacents :
 
-1. Broad Exception Handling: Several files use broad `except Exception` clauses that might hide underlying issues:
-   - `sync_instance.py` has broad exception handling with a pylint disable comment
-   - `sync_manager.py` has multiple broad exception handlers
-   - `sync_observer.py` has broad exception handlers
+- `sync_instance.py` a une gestion d'exception large avec un commentaire de désactivation pylint
+- `sync_manager.py` a plusieurs gestionnaires d'exception larges
+- `sync_observer.py` a des gestionnaires d'exception larges
 
-2. Missing Validation: The previously missing validation logic for payload transformation in `sync_manager.py` has been implemented.
+**Missing Validation**: La logique de validation précédemment manquante pour la transformation des payloads dans `sync_manager.py` a été implémentée.
 
 ## Architecture
 
 ### Flux Global
 ```mermaid
-%%{init: {'theme': 'neutral'}}%%
 flowchart TD
     A[Instance Source] -->|1. Détection\nModification| B(SyncManager)
     B -->|2. Enqueue| C[(SyncQueue)]
@@ -34,7 +33,7 @@ sequenceDiagram
     participant Manager as SyncManager
     participant Queue as SyncQueue
     participant Dest as Instance B
-    
+
     Source->>Manager: Notify Change (webhook)
     Manager->>Queue: Create SyncRecord
     loop Worker Process
@@ -61,7 +60,7 @@ sequenceDiagram
 - Traitement en arrière-plan des synchronisations via un worker dédié
 - Possibilité de synchronisation immédiate pour les cas critiques
 
-### 2. Configuration 
+### 2. Configuration
 - Mapping des champs configurable par modèle, par relation odoo-odoo
 - Gestion automatique des dépendances entre modèles
 - Paramètres de connexion sécurisés pour chaque instance
@@ -84,103 +83,83 @@ sequenceDiagram
 - Journal des erreurs
 - Alertes configurables
 
-## Flux de Synchronisation
+## Configuration et Observers
 
-1. **Détection des Changements**
-   - Surveillance des modifications sur les modèles configurés
-   - Création d'une entrée dans la file de synchronisation
+### Instances Odoo (odoo.sync.instance)
+Configuration des connexions aux instances distantes :
 
-2. **Validation Initiale**
-   - Vérification des données à synchroniser
-   - Validation des dépendances
+```python
+class OdooSyncInstance(models.Model):
+    _name = 'odoo.sync.instance'
+    _description = 'Instance Odoo distante'
 
-3. **Synchronisation**
-   - Envoi des données via XML-RPC
-   - Gestion des réponses et erreurs
+    name = fields.Char('Nom de l\'instance', required=True)
+    url = fields.Char('URL de l\'instance', required=True)
+    database = fields.Char('Base de données', required=True)
+    api_token = fields.Char('API Token', required=True, help="Token API généré dans l'instance distante")
+    active = fields.Boolean('Instance active', default=True)
+    state = fields.Selection([
+        ('connected', 'Connecté'),
+        ('disconnected', 'Déconnecté'),
+        ('error', 'Erreur')
+    ], default='disconnected')
 
-4. **Validation Finale**
-   - Vérification de la synchronisation
-   - Confirmation de l'intégrité
+    def _get_rpc_connection(self):
+        """Connexion XML-RPC avec API token"""
+        return xmlrpc.client.ServerProxy(
+            f"{self.url}/xmlrpc/2/object",
+            context=ssl._create_unverified_context()
+        )
 
-5. **Journalisation**
-   - Enregistrement du résultat
-   - Mise à jour des statistiques
+    def _authenticate(self):
+        """Authentification via API token"""
+        common = xmlrpc.client.ServerProxy(f"{self.url}/xmlrpc/2/common")
+        return common.authenticate_api_key(self.database, self.api_token)
 
-## Architecture Technique
-
-```plantuml
-@startuml
-skinparam monochrome true
-
-package "Configuration" {
-  [Instances Odoo] <<(E,LightGreen)>>
-  [Modèles Sync] <<(E,LightGreen)>>
-  [Destinations] <<(E,LightGreen)>>
-}
-
-package "Orchestration" {
-  [Queue] <<(Q,LightBlue)>>
-  [Worker] <<(Q,LightBlue)>>
-  [Scheduler] <<(Q,LightBlue)>>
-}
-
-package "Connectivité" {
-  [Adaptateur RPC] <<(C,Orange)>>
-  [Sérialiseur] <<(C,Orange)>>
-}
-
-[Instances Odoo] --> [Modèles Sync]
-[Modèles Sync] --> [Destinations]
-
-[Queue] --> [Worker]
-[Worker] --> [Adaptateur RPC]
-[Adaptateur RPC] --> [Sérialiseur]
-
-note right of [Sérialiseur]
-  Transformations de données
-  Gestion des dépendances
-  Mapping de champs
-end note
-@enduml
+    def test_connection(self):
+        """Test de connexion à l'instance"""
+        try:
+            uid = self._authenticate()
+            if uid:
+                self.state = 'connected'
+                return True
+            else:
+                self.state = 'error'
+                return False
+        except Exception as e:
+            self.state = 'error'
+            raise UserError(f"Erreur de connexion : {str(e)}")
 ```
 
-### Configuration et Observers
-
-#### Instances Odoo (odoo.sync.instance)
-Configuration des connexions aux instances distantes :
-- `name` : Nom de l'instance
-- `url` : URL de l'instance
-- `database` : Base de données
-- `username` : Utilisateur technique
-- `password` : Mot de passe (chiffré)
-- `active` : Instance active/inactive
-- `state` : État de la connexion
-
-#### Modèles Synchronisés (odoo.sync.model)
+### Modèles Synchronisés (odoo.sync.model)
 Configuration des modèles à synchroniser :
+
 - `model_id` : Référence vers ir.model
 - `name` : Nom du modèle (computed)
 - `odoo_id` : Mapping avec odoo.sync.instance
 - `active` : Synchronisation active/inactive
 - `priority` : Ordre de synchronisation pour les dépendances
 
-#### Champs Synchronisés (odoo.sync.model.field)
+### Champs Synchronisés (odoo.sync.model.field)
 Configuration des champs par modèle :
+
 - `field_id` : Référence vers ir.model.fields
 - `name` : Nom technique du champ (computed)
 - `required` : Champ obligatoire pour la synchronisation
 - `sync_default` : Valeur par défaut si non disponible
 - Exclusion des champs calculés (sauf si modifiables manuellement)
 
-#### Destinations (odoo.sync.model.destination)
+### Destinations (odoo.sync.model.destination)
 Configuration des destinations par modèle :
+
 - `model_sync_id` : Référence vers odoo.sync.model
 - `instance_id` : Référence vers odoo.sync.instance
 - `target_model` : Modèle cible sur l'instance distante
 - `active` : Synchronisation active pour cette destination
 - `field_ids` : Champs à synchroniser pour cette destination
 
-#### Gestionnaire de Synchronisation (odoo.sync.manager)
+## Gestionnaire de Synchronisation (odoo.sync.manager)
+
 ```python
 class OdooSyncManager(models.Model):
     _name = 'odoo.sync.manager'
@@ -229,7 +208,7 @@ class OdooSyncManager(models.Model):
                 'model_id': sync_model.model_id.id,
                 'resource_id': record.id,
                 'other_odoo_id': destination.instance_id.id,
-                'other_odoo_resource_id': record.get_external_id().get(record.id),  # Si déjà synchronisé
+                'other_odoo_resource_id': record.get_external_id().get(record.id),
                 'type': operation,
                 'state': 'pending',
                 'data_json': json.dumps(sync_data),
@@ -237,42 +216,23 @@ class OdooSyncManager(models.Model):
                 'write_date': record.write_date
             })
 
-    @api.model
-    def _observe_changes(self, method):
-        """Décorateur pour observer les changements sur les modèles configurés"""
-        def wrapper(self, *args, **kwargs):
-            # Capturer les champs modifiés pour write
-            changed_fields = list(kwargs.get('vals', {}).keys()) if method.__name__ == 'write' else None
-            
-            result = method(self, *args, **kwargs)
-            sync_manager = self.env['odoo.sync.manager']
-            
-            if isinstance(result, models.Model):
-                for record in result:
-                    sync_manager._queue_sync(record, method.__name__, changed_fields)
-            
-            return result
-        return wrapper
-
-# Application des observers sur les méthodes standard
-models.Model.create = OdooSyncManager._observe_changes(models.Model.create)
-models.Model.write = OdooSyncManager._observe_changes(models.Model.write)
-models.Model.unlink = OdooSyncManager._observe_changes(models.Model.unlink)
-
-### Template de Code pour le Gestionnaire
-
-```python
-class OdooSyncManager(models.Model):
-    _name = 'odoo.sync.manager'
-    
     def _process_sync_queue(self):
-        """Template de traitement de la queue"""
-        jobs = self.env['odoo.sync.job'].search([('state', '=', 'pending')])
+        """Traitement de la queue de synchronisation"""
+        jobs = self.env['odoo.sync.queue'].search([
+            ('state', '=', 'pending'),
+            ('retry_count', '<', 3)
+        ], limit=100)
+
         for job in jobs:
             try:
-                # Logique de synchronisation
+                instance = job.other_odoo_id
+                if not instance.active or instance.state != 'connected':
+                    continue
+
+                # Exécuter la synchronisation
                 self._execute_sync(job)
                 job.write({'state': 'done'})
+
             except Exception as e:
                 job.write({
                     'state': 'failed',
@@ -281,37 +241,42 @@ class OdooSyncManager(models.Model):
                 })
 
     def _execute_sync(self, job):
-        """Template d'exécution d'une synchronisation"""
-        adapter = self._get_rpc_adapter(job.instance_id)
-        serializer = self._get_serializer(job.model_id)
-        
-        data = serializer.serialize(job.record_id)
-        response = adapter.execute(job.operation, data)
-        
-        if not response['success']:
-            raise SyncException(response['error_code'])
+        """Exécution d'une synchronisation"""
+        instance = job.other_odoo_id
+        rpc = instance._get_rpc_connection()
+        uid = instance._authenticate()
+
+        if not uid:
+            raise ValueError("Échec d'authentification")
+
+        data = json.loads(job.data_json)
+
+        if job.type == 'create':
+            result = rpc.execute_kw(
+                instance.database, uid, instance.api_token,
+                job.model_id.model, 'create', [data]
+            )
+            job.other_odoo_resource_id = result
+
+        elif job.type == 'write':
+            rpc.execute_kw(
+                instance.database, uid, instance.api_token,
+                job.model_id.model, 'write',
+                [[job.other_odoo_resource_id], data]
+            )
+
+        elif job.type == 'unlink':
+            rpc.execute_kw(
+                instance.database, uid, instance.api_token,
+                job.model_id.model, 'unlink', [job.other_odoo_resource_id]
+            )
 ```
 
 ## Modèles de Données
 
-### SyncConfiguration
-#### Configuration des Instances (odoo.sync.instance)
-- Nom de l'instance
-- URL de l'instance
-- Base de données
-- Identifiants de connexion sécurisés
-- État de la connexion
-
-#### Configuration des Modèles (odoo.sync.model)
-- Modèle Odoo à synchroniser
-- Liste des instances Odoo cibles
-- Mapping des champs
-- Direction de la synchronisation (uni/bidirectionnelle)
-- Champs à surveiller
-- Règles de synchronisation spécifiques
-
 ### SyncQueue
 Table principale pour la gestion des synchronisations :
+
 - `model_id` : Modèle Odoo à synchroniser
 - `resource_id` : ID de la ressource locale
 - `other_odoo_id` : ID de l'instance Odoo distante
@@ -331,187 +296,71 @@ Table principale pour la gestion des synchronisations :
 - Erreurs et avertissements
 - Statistiques de performance
 
-### Gestion des Conflits
+## Gestion des Conflits
 
-#### Détection
+### Détection
 - Comparaison des horodatages `write_date` (source) vs `other_write_date` (cible)
 - Seuil de tolérance configurable (défaut : 5 minutes)
 
-#### Stratégies de Résolution
+### Stratégies de Résolution
 1. **Priorité source** : Écrasement de la version cible
-2. **Priorité destination** : Conservation de la version cible  
+2. **Priorité destination** : Conservation de la version cible
 3. **Fusion manuelle** :
    - Notification aux administrateurs
    - Interface de comparaison côte-à-côte
    - Historique des versions (diff)
 
-#### Cas Particuliers
+### Cas Particuliers
 - Réconciliation des relations Many2many/One2many
 - Gestion des suppressions/archivages croisés
 
-### Journalisation Avancée (SyncLog)
+## Sécurité des Données
 
-#### Niveaux de Log
-- **DEBUG**: Payloads complets et traces d'exécution
-- **INFO**: Diffs des modifications et métadonnées
-- **WARNING**: Erreurs non critiques (ex: timeouts)
-- **ERROR**: Échecs critiques de synchronisation
-
-#### Politique de Rétention
-- Stockage local: 90 jours (accès rapide)
-- Archivage long terme: AWS S3 Glacier (7 ans)
-- Format d'archivage: Parquet compressé
-
-#### Masquage des Données Sensibles
-Fonction de masquage automatique :
+### Authentification
 ```python
-def sanitize_log_entry(entry):
-    sensitive_fields = ['password', 'api_key', 'token']
-    for field in sensitive_fields:
-        if field in entry['data']:
-            entry['data'][field] = '*****'
-    return entry
+class OdooSyncInstance(models.Model):
+    _inherit = 'odoo.sync.instance'
+
+    def _secure_connection(self):
+        """Configuration de sécurité pour les connexions"""
+        return {
+            'use_ssl': True,
+            'verify_ssl': True,
+            'timeout': 30,
+            'headers': {
+                'User-Agent': 'Odoo-Sync/1.0',
+                'X-API-Key': self.api_token
+            }
+        }
 ```
 
-### Sécurité des Données
+### Gestion des Accès
+**API Tokens Odoo natifs** :
+- Utilisation du système d'authentification intégré d'Odoo
+- Révocation simple via l'interface utilisateur
+- Audit automatique des accès
+- Permissions granulaires via les groupes de sécurité existants
 
-#### Chiffrement
+**Avantages** :
+- Intégration native avec le système de sécurité Odoo
+- Pas de complexité supplémentaire (JWT/OAuth2)
+- Gestion centralisée des tokens
+- Logs d'accès automatiques dans `res.users.log`
+
+### Chiffrement
 - TLS 1.3 obligatoire pour les communications
-- Rotation automatique des certificats (Let's Encrypt)
+- Rotation automatique des certificats
 - Chiffrement AES-256 au repos pour :
-  - SyncQueue.data_json
-  - SyncLog.payload
+  - `SyncQueue.data_json`
+  - `SyncLog.payload`
 
-#### Gestion des Accès
-- Authentification mutuelle OAuth2 avec JWT :
-  ```python
-  # Génération de token sécurisé
-  def generate_jwt(secret, payload):
-      return jwt.encode(payload, secret, algorithm="HS256")
-  ```
-- RBAC (Role-Based Access Control) :
-  - Rôle 'Sync Admin' : Configuration complète
-  - Rôle 'Sync Auditor' : Lecture seule
-
-#### Audit
+### Audit
 - Logs d'accès horodatés avec IP/user-agent
-- Intégration SIEM (ex: Splunk, ELK)
+- Intégration SIEM possible
+- Journal des modifications sensibles
 
-## Sécurité
-- Authentification sécurisée entre instances
-- Encryption des données sensibles
-- Validation des permissions
-- Audit des opérations
+## Groupes de Sécurité
 
-## Interface Utilisateur
-- Configuration des synchronisations
-- Monitoring en temps réel
-- Gestion des erreurs
-- Rapports et statistiques
-
-## Performance
-- Optimisation des requêtes
-- Gestion de la charge
-- Limitation des appels API
-- Mise en cache intelligente
-
-## Performance à l'Échelle
-
-#### Architecture Scalable
-- File d'attente Redis pour découplage
-- Scaling horizontal via Kubernetes
-- Partitionnement par modèle/instance
-
-#### Optimisations
-- Cache des relations fréquemment accédées
-- Compression LZ4 des payloads volumineux
-- Traitement batch avec isolation transactionnelle
-
-#### Monitoring
-- Dashboard Grafana avec :
-  - Débit (records/min)
-  - Latence (P50/P90/P99)
-  - Taux d'utilisation des workers
-
-## Maintenance
-- Outils de diagnostic
-- Nettoyage automatique des logs
-- Gestion des sauvegardes
-- Procédures de mise à jour
-
-## Gestion des Conflits de Synchronisation
-
-### Détection des Conflits
-- **Conflit de Version** : Détecté lorsque la version locale et distante ont été modifiées depuis la dernière synchronisation
-- **Conflit de Données** : Détecté lorsque les mêmes champs ont été modifiés différemment sur les deux instances
-- **Conflit de Relations** : Détecté lorsque des enregistrements liés sont incohérents entre les instances
-
-### Stratégies de Résolution
-1. **Automatique**
-   - Priorité configurable par instance (master/slave)
-   - Règles de fusion personnalisables par champ
-   - Horodatage "le plus récent gagne"
-
-2. **Manuelle**
-   - Interface de résolution pour l'utilisateur
-   - Visualisation côte à côte des différences
-   - Options : garder source, garder destination, fusionner, ignorer
-
-### Configuration des Règles de Résolution
-```python
-class OdooSyncModelField(models.Model):
-    _inherit = 'odoo.sync.model.field'
-
-    conflict_strategy = fields.Selection([
-        ('source_wins', 'Source gagne'),
-        ('dest_wins', 'Destination gagne'),
-        ('newest', 'Plus récent'),
-        ('manual', 'Résolution manuelle')
-    ], default='newest')
-```
-
-## Gestion des Suppressions
-
-### Stratégies de Suppression
-1. **Suppression Douce**
-   - Marquage comme inactif sur les deux instances
-   - Conservation de l'historique
-   - Possibilité de restauration
-
-2. **Suppression Dure**
-   - Suppression physique sur les deux instances
-   - Vérification des dépendances
-   - Journal d'audit détaillé
-
-### Configuration
-```python
-class OdooSyncModel(models.Model):
-    _inherit = 'odoo.sync.model'
-
-    deletion_strategy = fields.Selection([
-        ('soft', 'Suppression douce'),
-        ('hard', 'Suppression physique'),
-        ('ignore', 'Ignorer'),
-        ('manual', 'Validation manuelle')
-    ], default='soft')
-
-    cascade_deletion = fields.Boolean('Cascade aux enregistrements liés')
-```
-
-## Sécurité et Droits d'Accès
-
-### Niveaux de Sécurité
-1. **Niveau Instance**
-   - Authentification par token JWT
-   - Chiffrement des communications
-   - Restriction par IP
-
-2. **Niveau Utilisateur**
-   - Groupes de sécurité dédiés
-   - Journalisation des actions
-   - Validation multi-niveau
-
-### Groupes de Sécurité
 ```xml
 <record id="group_sync_user" model="res.groups">
     <field name="name">Synchronisation : Utilisateur</field>
@@ -524,15 +373,23 @@ class OdooSyncModel(models.Model):
 </record>
 ```
 
-### Règles de Sécurité
-```xml
-<record id="rule_sync_model_manager" model="ir.rule">
-    <field name="name">Sync Manager : Accès Total</field>
-    <field name="model_id" ref="model_odoo_sync_model"/>
-    <field name="groups" eval="[(4, ref('group_sync_manager'))]"/>
-    <field name="domain_force">[(1, '=', 1)]</field>
-</record>
-```
+## Performance à l'Échelle
+
+### Architecture Scalable
+- File d'attente Redis pour découplage
+- Scaling horizontal via Kubernetes
+- Partitionnement par modèle/instance
+
+### Optimisations
+- Cache des relations fréquemment accédées
+- Compression LZ4 des payloads volumineux
+- Traitement batch avec isolation transactionnelle
+
+### Monitoring
+Dashboard avec métriques :
+- Débit (records/min)
+- Latence (P50/P90/P99)
+- Taux d'utilisation des workers
 
 ## Exemples de Configuration
 
@@ -556,10 +413,6 @@ product_sync = {
     },
     'conflict_strategy': 'newest'
 }
-
-# Fonction de mapping personnalisée
-def map_cost_price(self, record):
-    return record.standard_price * self.currency_rate
 ```
 
 ### 2. Synchronisation des Commandes
@@ -584,98 +437,26 @@ sale_sync = {
 }
 ```
 
-### 3. Interface de Configuration
-```xml
-<record id="view_sync_config_form" model="ir.ui.view">
-    <field name="name">odoo.sync.config.form</field>
-    <field name="model">odoo.sync.model</field>
-    <field name="arch" type="xml">
-        <form>
-            <group>
-                <field name="model_id"/>
-                <field name="active"/>
-                <field name="deletion_strategy"/>
-            </group>
-            <notebook>
-                <page string="Champs">
-                    <field name="field_ids">
-                        <tree editable="bottom">
-                            <field name="field_id"/>
-                            <field name="sync_type"/>
-                            <field name="conflict_strategy"/>
-                        </tree>
-                    </field>
-                </page>
-            </notebook>
-        </form>
-    </field>
-</record>
-```
-
-## Scénarios de Test Critiques
-
-### TC-01 : Synchronisation bidirectionnelle
-**Préconditions**:
-- 2 instances interconnectées
-- Modèle 'res.partner' configuré
-
-**Étapes**:
-1. Créer partenaire sur Instance A
-2. Vérifier création sur Instance B
-3. Modifier partenaire sur Instance B
-4. Vérifier mise à jour sur Instance A
-
-**Résultat attendu**:
-- SyncLog avec code SYNC_200 sur les deux instances
-- Données cohérentes après boucle complète
-
-### TC-02 : Gestion des conflits
-**Préconditions**:
-- Même enregistrement modifié simultanément sur les deux instances
-
-**Étapes**:
-1. Modifier le champ 'name' sur Instance A
-2. Modifier le champ 'email' sur Instance B
-3. Déclencher manuellement la synchronisation
-
-**Résultat attendu**:
-- Application de la stratégie de résolution configurée
-- Journalisation du conflit (SYNC_409)
-
-### TC-03 : Tolérance aux pannes
-**Préconditions**:
-- Instance B hors ligne
-
-**Étapes**:
-1. Tenter une synchronisation
-2. Redémarrer Instance B
-3. Relancer la synchronisation
-
-**Résultat attendu**:
-- Rejeu automatique des transactions en erreur
-- Conservation des données en queue pendant 24h
-
 ## Procédures de Déploiement
 
 ### Prérequis
 - Odoo 15.0+
 - Accès API aux instances distantes
-- Bibliothèque python-requests
+- Génération d'API tokens sur les instances cibles
 
 ### Installation
 1. Copier le répertoire `odoo_to_odoo_sync` dans `addons/`
 2. Redémarrer le serveur Odoo
 3. Installer le module via l'interface d'administration
+4. Configurer les API tokens pour chaque instance
 
 ### Configuration
-```python
+```ini
 # Configuration de base dans odoo.conf
 [odoo_sync]
 max_retries = 3
 retry_delay = 300  # secondes
 queue_size = 1000
-
-# Activation du mode debug
 debug = False
 ```
 
@@ -683,3 +464,69 @@ debug = False
 ```bash
 # Lancer les tests d'intégration
 $ ./odoo-bin -i odoo_to_odoo_sync --test-enable
+```
+
+## Scénarios de Test Critiques
+
+### TC-01 : Synchronisation bidirectionnelle
+**Préconditions:**
+- 2 instances interconnectées
+- Modèle 'res.partner' configuré
+
+**Étapes:**
+1. Créer partenaire sur Instance A
+2. Vérifier création sur Instance B
+3. Modifier partenaire sur Instance B
+4. Vérifier mise à jour sur Instance A
+
+**Résultat attendu:**
+- SyncLog avec code SYNC_200 sur les deux instances
+- Données cohérentes après boucle complète
+
+### TC-02 : Gestion des conflits
+**Préconditions:**
+- Même enregistrement modifié simultanément sur les deux instances
+
+**Étapes:**
+1. Modifier le champ 'name' sur Instance A
+2. Modifier le champ 'email' sur Instance B
+3. Déclencher manuellement la synchronisation
+
+**Résultat attendu:**
+- Application de la stratégie de résolution configurée
+- Journalisation du conflit (SYNC_409)
+
+### TC-03 : Tolérance aux pannes
+**Préconditions:**
+- Instance B hors ligne
+
+**Étapes:**
+1. Tenter une synchronisation
+2. Redémarrer Instance B
+3. Relancer la synchronisation
+
+**Résultat attendu:**
+- Rejeu automatique des transactions en erreur
+- Conservation des données en queue pendant 24h
+
+## Maintenance
+
+### Outils de diagnostic
+- Interface de monitoring en temps réel
+- Logs détaillés par opération
+- Métriques de performance
+
+### Nettoyage automatique des logs
+- Rétention configurable (défaut: 90 jours)
+- Archivage automatique des anciennes données
+- Compression des logs volumineux
+
+### Gestion des sauvegardes
+- Sauvegarde automatique de la configuration
+- Export/import des paramètres de synchronisation
+- Rollback en cas de problème
+
+### Procédures de mise à jour
+- Tests automatisés avant déploiement
+- Migration des données existantes
+- Documentation des changements%

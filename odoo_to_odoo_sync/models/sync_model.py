@@ -92,3 +92,30 @@ class OdooSyncModel(models.Model):
 
     def name_get(self):
         return [(r.id, f'{r.name} → {r.instance_id.name}') for r in self]
+
+    def action_auto_sync_fields(self):
+        """Open the auto-sync wizard for field selection."""
+        self.ensure_one()
+        
+        if not self.model_id:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Error',
+                    'message': 'No model selected',
+                    'type': 'danger',
+                    'sticky': False,
+                }
+            }
+        
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Auto Sync Fields',
+            'res_model': 'odoo.sync.auto.sync.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_sync_model_id': self.id,
+            },
+        }

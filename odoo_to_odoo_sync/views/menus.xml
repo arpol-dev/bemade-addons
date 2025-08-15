@@ -49,4 +49,6 @@
               parent="menu_sync_root"
               action="action_odoo_sync_conflict"
               sequence="30"/>
+              
+
 </odoo>
