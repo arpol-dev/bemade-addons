@@ -18,6 +18,10 @@
     'data': [
         'data/ir_config_parameter_data.xml',
         'views/menus.xml',
+        'views/odoo_to_bemade_instance_views.xml',
+        # Load project view extensions and wizard UI
+        'views/project_views.xml',
+        'wizards/assign_project_wizard_view.xml',
     ],
     'installable': True,
     'application': False,

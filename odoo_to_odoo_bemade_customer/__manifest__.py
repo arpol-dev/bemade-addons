@@ -16,6 +16,8 @@
     ],
     'data': [
         'data/ir_config_parameter_data.xml',
+        'wizards/receive_project_wizard_view.xml',
+        'views/project_views.xml',
     ],
     'installable': True,
     'application': False,

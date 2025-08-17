@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+        <!-- Form View for Assign Project Wizard -->
+        <record id="view_odoo_to_bemade_assign_project_wizard_form" model="ir.ui.view">
+            <field name="name">odoo.to.bemade.assign.project.wizard.form</field>
+            <field name="model">odoo.to.bemade.assign.project.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Assign Project to Client">
+                    <sheet>
+                        <group>
+                            <field name="project_id"/>
+                            <field name="client_instance_id"/>
+                            <field name="protocol"/>
+                        </group>
+                        <group>
+                            <field name="sync_project_task"/>
+                            <field name="sync_project_timesheet"/>
+                        </group>
+                        <group string="Generated Keys" invisible="not project_key">
+                            <field name="project_key"/>
+                            <field name="client_api_token"/>
+                        </group>
+                    </sheet>
+                    <footer>
+                        <button name="action_assign_project" string="Assign Project" type="object" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <!-- Action to open the wizard -->
+        <record id="action_odoo_to_bemade_assign_project_wizard" model="ir.actions.act_window">
+            <field name="name">Assign to Client</field>
+            <field name="res_model">odoo.to.bemade.assign.project.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+            <field name="binding_model_id" ref="project.model_project_project"/>
+            <field name="binding_view_types">form</field>
+            <field name="context">{'default_project_id': active_id}</field>
+        </record>
+    </data>
+</odoo>

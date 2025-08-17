@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_project_form_inherit_bemade_customer" model="ir.ui.view">
+        <field name="name">project.project.form.inherit.bemade.customer</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_receive_bemade_project" type="object" string="Receive from Bemade" 
+                        class="btn-secondary" invisible="is_bemade_project"/>
+            </xpath>
+            <xpath expr="//sheet/group[1]" position="inside">
+                <group string="Bemade Synchronization">
+                    <field name="is_bemade_project"/>
+                    <field name="bemade_project_key" invisible="not is_bemade_project"/>
+                    <field name="bemade_sync_enabled"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+
+    <record id="view_project_search_inherit_bemade_customer" model="ir.ui.view">
+        <field name="name">project.project.search.inherit.bemade.customer</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.view_project_project_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//filter[@name='my_projects']" position="after">
+                <filter string="Bemade Projects" name="bemade_projects" domain="[('is_bemade_project', '=', True)]"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

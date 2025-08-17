@@ -38,6 +38,12 @@ class OdooSyncModel(models.Model):
         required=True
     )
 
+    project_id = fields.Many2one(
+        comodel_name='sync.project',
+        string='Sync Project',
+        ondelete='cascade'
+    )
+
     target_model = fields.Char(
         string='Target Model',
         help='Technical name of the model on remote instance'

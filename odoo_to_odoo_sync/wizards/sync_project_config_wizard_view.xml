@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_sync_project_config_wizard" model="ir.ui.view">
+        <field name="name">sync.project.config.wizard.form</field>
+        <field name="model">sync.project.config.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Sync Project Configuration">
+                <sheet>
+                    <group string="Connection Settings">
+                        <group>
+                            <field name="name"/>
+                            <field name="url"/>
+                            <field name="database"/>
+                        </group>
+                        <group>
+                            <field name="username"/>
+                            <field name="api_token" password="True"/>
+                            <field name="protocol"/>
+                        </group>
+                    </group>
+                    <footer>
+                        <button name="action_configure_sync" type="object" string="Configure Sync" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_sync_project_config_wizard" model="ir.actions.act_window">
+        <field name="name">Configure Sync Project</field>
+        <field name="res_model">sync.project.config.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="model_sync_project"/>
+        <field name="binding_view_types">form</field>
+    </record>
+</odoo>

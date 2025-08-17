@@ -8,5 +8,7 @@ from . import sync_conflict
 from . import sync_conflict_wizard
 from . import sync_conflict_wizard_field
 from . import sync_observer
+from . import sync_project
+from . import sync_project_config_wizard
 
 from . import sync_dependency

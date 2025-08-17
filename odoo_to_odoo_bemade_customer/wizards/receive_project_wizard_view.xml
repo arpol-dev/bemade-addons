@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_odoo_to_bemade_customer_receive_wizard" model="ir.ui.view">
+        <field name="name">odoo.to.bemade.customer.receive.wizard.form</field>
+        <field name="model">odoo.to.bemade.customer.receive.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Receive Project from Bemade">
+                <sheet>
+                    <group string="Bemade Server Connection">
+                        <group>
+                            <field name="bemade_url"/>
+                            <field name="bemade_database"/>
+                        </group>
+                        <group>
+                            <field name="bemade_username"/>
+                            <field name="bemade_api_key" password="True"/>
+                        </group>
+                    </group>
+                    <group string="Project Configuration">
+                        <group>
+                            <field name="project_id"/>
+                            <field name="bemade_project_key"/>
+                        </group>
+                        <group>
+                            <field name="protocol"/>
+                        </group>
+                    </group>
+                    <footer>
+                        <button name="action_test_connection" type="object" string="Test Connection" class="btn-secondary"/>
+                        <button name="action_receive_project" type="object" string="Receive Project" class="btn-primary"/>
+                        <button string="Cancel" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_odoo_to_bemade_customer_receive_wizard" model="ir.actions.act_window">
+        <field name="name">Receive Bemade Project</field>
+        <field name="res_model">odoo.to.bemade.customer.receive.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="project.model_project_project"/>
+        <field name="binding_view_types">form,tree</field>
+    </record>
+</odoo>

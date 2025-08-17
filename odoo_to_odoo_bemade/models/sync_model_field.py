@@ -26,6 +26,14 @@ class OdooToBemadeSyncModelField(models.Model):
     _inherit = 'odoo.sync.model.field'
     
     # Add Bemade-specific fields here
+    transform_type = fields.Selection([
+        ('direct', 'Direct'),
+        ('function', 'Function'),
+        ('computed', 'Computed'),
+        ('relation', 'Relation')
+    ], string='Transform Type', default='direct',
+       help='Type of transformation to apply to the field value')
+    
     bemade_transformation = fields.Selection([
         ('none', 'No Transformation'),
         ('prefix', 'Add Prefix'),

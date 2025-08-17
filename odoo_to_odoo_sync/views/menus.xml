@@ -51,4 +51,8 @@
               sequence="30"/>
               
 
+    <!-- Sync Project Menu -->
+    <menuitem id="menu_sync_project_root" name="Sync Projects" parent="menu_sync_root" sequence="15"/>
+    <menuitem id="menu_sync_project" name="Projects" parent="menu_sync_project_root" action="action_sync_project" sequence="10"/>
+
 </odoo>

@@ -1,40 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data noupdate="1">
-        <!-- Bemade Default Configuration Parameters -->
-        <record id="config_bemade_sync_url" model="ir.config_parameter">
-            <field name="key">bemade.sync.default_url</field>
-            <field name="value">https://odoo.bemade.org</field>
-        </record>
+        <!-- Bemade Default Configuration Parameters - using function tag to handle existing values -->
+        <function name="set_param" model="ir.config_parameter">
+            <value name="key">bemade.sync.default_url</value>
+            <value name="value">https://odoo.bemade.org</value>
+        </function>
         
-        <record id="config_bemade_sync_database" model="ir.config_parameter">
-            <field name="key">bemade.sync.default_database</field>
-            <field name="value">bemade</field>
-        </record>
+        <function name="set_param" model="ir.config_parameter">
+            <value name="key">bemade.sync.default_database</value>
+            <value name="value">bemade</value>
+        </function>
         
-        <record id="config_bemade_sync_username" model="ir.config_parameter">
-            <field name="key">bemade.sync.default_username</field>
-            <field name="value">sync_user</field>
-        </record>
+        <function name="set_param" model="ir.config_parameter">
+            <value name="key">bemade.sync.default_username</value>
+            <value name="value">sync_user</value>
+        </function>
         
-        <record id="config_bemade_sync_connection_type" model="ir.config_parameter">
-            <field name="key">bemade.sync.default_connection_type</field>
-            <field name="value">odoorpc</field>
-        </record>
+        <function name="set_param" model="ir.config_parameter">
+            <value name="key">bemade.sync.default_connection_type</value>
+            <value name="value">odoorpc</value>
+        </function>
         
-        <record id="config_bemade_sync_timeout" model="ir.config_parameter">
-            <field name="key">bemade.sync.default_timeout</field>
-            <field name="value">30</field>
-        </record>
+        <function name="set_param" model="ir.config_parameter">
+            <value name="key">bemade.sync.default_timeout</value>
+            <value name="value">30</value>
+        </function>
         
-        <record id="config_bemade_sync_retry_count" model="ir.config_parameter">
-            <field name="key">bemade.sync.default_retry_count</field>
-            <field name="value">3</field>
-        </record>
+        <function name="set_param" model="ir.config_parameter">
+            <value name="key">bemade.sync.default_retry_count</value>
+            <value name="value">3</value>
+        </function>
         
-        <record id="config_bemade_sync_retry_delay" model="ir.config_parameter">
-            <field name="key">bemade.sync.default_retry_delay</field>
-            <field name="value">5</field>
-        </record>
+        <function name="set_param" model="ir.config_parameter">
+            <value name="key">bemade.sync.default_retry_delay</value>
+            <value name="value">5</value>
+        </function>
     </data>
 </odoo>

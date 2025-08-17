@@ -11,6 +11,7 @@ for OdooRPC and specialized connection handling for Bemade clients.
 import logging
 import time
 import random
+import socket
 from urllib.parse import urlparse
 
 # Import XML-RPC for standard connections
@@ -106,18 +107,8 @@ class OdooToBemadeInstance(models.Model):
     _inherit = 'odoo.sync.instance'
 
     # Champs spécifiques à Bemade
-    api_key_id = fields.Many2one(
-        'odoo.to.bemade.api.key',
-        string='API Key',
-        help='API key for authentication with Bemade instance',
-        domain=[('is_active', '=', True)],
-    )
-    
-    use_api_key = fields.Boolean(
-        string='Use API Key',
-        default=False,
-        help='Use API key instead of password for authentication',
-    )
+    # Note: Legacy API key functionality has been removed
+    # Use the built-in api_key field from parent model instead
     
     # Override connection_type to add OdooRPC option
     connection_type = fields.Selection(
@@ -244,19 +235,29 @@ class OdooToBemadeInstance(models.Model):
             if not parsed_url.scheme or not parsed_url.netloc:
                 raise UserError("Format d'URL invalide. Exemple valide: https://exemple.odoo.com")
             
-            # Get authentication credentials
-            if self.use_api_key and self.api_key_id:
-                # Use API key for authentication
-                auth_key = self.api_key_id.key_hash  # In production, this would be the hashed key
-                # Record usage of the API key
-                self.api_key_id.record_usage()
-            else:
-                # Use password for authentication
-                auth_key = self._decrypt_sensitive_data()
-                
-            # Attempt to connect and authenticate
-            common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
-            uid = common.authenticate(self.database, self.username, auth_key, {})
+            # Get API token for authentication (Odoo 18+ expects dict with scope/key during authenticate)
+            api_token = self._decrypt_sensitive_data() or self.api_key
+            
+            # Timeout-aware XML-RPC transport
+            class TimeoutTransport(xmlrpc.client.Transport):
+                def __init__(self, timeout=None, use_datetime=False):
+                    super().__init__(use_datetime=use_datetime)
+                    self.timeout = timeout
+                def make_connection(self, host):
+                    conn = super().make_connection(host)
+                    try:
+                        conn.timeout = self.timeout
+                    except Exception:
+                        pass
+                    return conn
+
+            transport = TimeoutTransport(timeout=self.connection_timeout or 30)
+            common = xmlrpc.client.ServerProxy(
+                f'{self.url}/xmlrpc/2/common', transport=transport, allow_none=True
+            )
+            uid = common.authenticate(
+                self.database, self.username, {'scope': 'rpc', 'key': api_token}, {}
+            )
             
             if uid:
                 self.write({
@@ -297,20 +298,32 @@ class OdooToBemadeInstance(models.Model):
 
     def _get_xmlrpc_connection(self):
         """Override parent's XML-RPC connection method to support API key authentication."""
-        # Get authentication credentials
-        if self.use_api_key and self.api_key_id:
-            # Use API key for authentication
-            auth_key = self.api_key_id.key_hash  # In production, this would be the hashed key
-            # Record usage of the API key
-            self.api_key_id.record_usage()
-        else:
-            # Use password for authentication
-            auth_key = self._decrypt_sensitive_data()
-        
-        common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
-        uid = common.authenticate(self.database, self.username, auth_key, {})
-        models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object')
-        
+        # Get API token for authentication
+        api_token = self._decrypt_sensitive_data() or self.api_key
+
+        # Timeout-aware transport
+        class TimeoutTransport(xmlrpc.client.Transport):
+            def __init__(self, timeout=None, use_datetime=False):
+                super().__init__(use_datetime=use_datetime)
+                self.timeout = timeout
+            def make_connection(self, host):
+                conn = super().make_connection(host)
+                try:
+                    conn.timeout = self.timeout
+                except Exception:
+                    pass
+                return conn
+
+        transport = TimeoutTransport(timeout=self.connection_timeout or 30)
+        common = xmlrpc.client.ServerProxy(
+            f'{self.url}/xmlrpc/2/common', transport=transport, allow_none=True
+        )
+        uid = common.authenticate(
+            self.database, self.username, {'scope': 'rpc', 'key': api_token}, {}
+        )
+        models = xmlrpc.client.ServerProxy(
+            f'{self.url}/xmlrpc/2/object', transport=transport, allow_none=True
+        )
         return models, uid
 
     def _test_odoorpc_connection(self):
@@ -332,36 +345,65 @@ class OdooToBemadeInstance(models.Model):
                     "Installez-la avec 'pip install odoorpc'"
                 ) from exc
             
-            # Parse URL to extract connection details
-            parsed_url = urlparse(self.url)
-            protocol = parsed_url.scheme
-            host = parsed_url.netloc
+            # Parse URL to extract connection details (ensure scheme present)
+            raw_url = (self.url or '').strip()
+            parsed_url = urlparse(raw_url)
+            if not parsed_url.scheme:
+                raw_url = f'https://{raw_url}'
+                parsed_url = urlparse(raw_url)
+            protocol = 'jsonrpc+ssl' if parsed_url.scheme == 'https' else 'jsonrpc'
+            host = parsed_url.hostname
+            if not host:
+                raise UserError("URL invalide: hôte introuvable. Incluez le schéma (https://) et le domaine.")
             
-            # Extract port if present
-            if ':' in host:
-                host, port = host.split(':')
-                port = int(port)
-            else:
-                port = 443 if protocol == 'https' else 80
-            
+            # Determine port using parsed value or defaults
+            port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
+
+            # Preflight TCP connectivity to avoid hangs (DNS/TLS/connect)
+            _logger.info(
+                "[Bemade Sync][OdooRPC] Preflight TCP connect to %s:%s (timeout=%ss)",
+                host, port, self.connection_timeout or 30,
+            )
+            try:
+                start = time.time()
+                with socket.create_connection((host, port), timeout=self.connection_timeout or 30):
+                    pass
+                _logger.info(
+                    "[Bemade Sync][OdooRPC] Preflight OK in %.3fs",
+                    time.time() - start,
+                )
+            except Exception as e:
+                raise UserError(f"Impossible de joindre {host}:{port} - {e}") from e
+
             # Attempt connection with OdooRPC
-            # Note: timeout is passed as a keyword argument during login phase
             odoo = odoorpc.ODOO(
-                host, 
-                protocol=protocol, 
+                host,
+                protocol=protocol,
                 port=port
+            )
+            # Configure library timeout to prevent hanging connections
+            if hasattr(odoo, 'config'):
+                odoo.config['timeout'] = self.connection_timeout or 30
+            _logger.info(
+                "[Bemade Sync][OdooRPC] Connecting to %s:%s protocol=%s timeout=%ss",
+                host, port, protocol, self.connection_timeout or 30,
             )
             
             # Try to login with credentials
-            if self.use_api_key and self.api_key_id:
-                # Use API key for authentication
-                api_key = self.api_key_id.key_hash  # In production, this would be the hashed key
+            api_key = self._decrypt_sensitive_data() or self.api_key
+            prev_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(self.connection_timeout or 30)
+            try:
+                _logger.info(
+                    "[Bemade Sync][OdooRPC] Logging in db=%s user=%s",
+                    self.database, self.username,
+                )
                 odoo.login(self.database, self.username, api_key)
-                # Record usage of the API key
-                self.api_key_id.record_usage()
-            else:
-                # Use password for authentication
-                odoo.login(self.database, self.username, self.password)
+            finally:
+                try:
+                    socket.setdefaulttimeout(prev_timeout)
+                except Exception:
+                    pass
             
             # If successful, update record state
             if odoo.env:
@@ -389,7 +431,7 @@ class OdooToBemadeInstance(models.Model):
             _logger.error("Erreur d'authentification OdooRPC: %s", error_msg)
             return False
             
-        except (ConnectionError, TimeoutError, ValueError, TypeError) as e:
+        except (ConnectionError, TimeoutError, socket.timeout, ValueError, TypeError) as e:
             # Catch specific exceptions that can be raised during connection
             error_msg = str(e)
             self.write({
@@ -465,31 +507,47 @@ class OdooToBemadeInstance(models.Model):
                     "Installez-la avec 'pip install odoorpc'"
                 ) from exc
                 
-            # Parse URL to extract connection details
-            parsed_url = urlparse(self.url)
-            protocol = parsed_url.scheme
-            host = parsed_url.netloc
-            
-            # Extract port if present
-            if ':' in host:
-                host, port = host.split(':')
-                port = int(port)
-            else:
-                port = 443 if protocol == 'https' else 80
+            # Parse URL to extract connection details (ensure scheme present)
+            raw_url = (self.url or '').strip()
+            parsed_url = urlparse(raw_url)
+            if not parsed_url.scheme:
+                raw_url = f'https://{raw_url}'
+                parsed_url = urlparse(raw_url)
+            is_https = parsed_url.scheme == 'https'
+            protocol = 'jsonrpc+ssl' if is_https else 'jsonrpc'
+            host = parsed_url.hostname
+            if not host:
+                raise UserError("URL invalide: hôte introuvable. Incluez le schéma (https://) et le domaine.")
+            port = parsed_url.port or (443 if is_https else 80)
+
+            # Preflight TCP connectivity to avoid hangs (DNS/TLS/connect)
+            _logger.info(
+                "[Bemade Sync][OdooRPC] get_connection preflight TCP to %s:%s (timeout=%ss)",
+                host, port, self.connection_timeout or 30,
+            )
+            try:
+                with socket.create_connection((host, port), timeout=self.connection_timeout or 30):
+                    pass
+            except Exception as e:
+                raise UserError(f"Impossible de joindre {host}:{port} - {e}") from e
             
             # Create OdooRPC connection
-            # Note: OdooRPC doesn't accept timeout in constructor, set it after
             odoo = odoorpc.ODOO(
-                host, 
-                protocol=protocol, 
+                host,
+                protocol=protocol,
                 port=port
             )
             # Set timeout via attribute if available
             if hasattr(odoo, 'config'):
-                odoo.config['timeout'] = self.connection_timeout
+                odoo.config['timeout'] = self.connection_timeout or 30
+            _logger.info(
+                "[Bemade Sync][OdooRPC] get_connection -> %s:%s protocol=%s timeout=%ss",
+                host, port, protocol, self.connection_timeout or 30,
+            )
             
-            # Login with credentials
-            odoo.login(self.database, self.username, self.password)
+            # Login with API token credentials
+            api_token = self._decrypt_sensitive_data() or self.api_key
+            odoo.login(self.database, self.username, api_token)
             
             # Create a wrapper class to make OdooRPC interface compatible with xmlrpc/jsonrpc
             class OdooRPCWrapper:
@@ -627,11 +685,12 @@ class OdooToBemadeInstance(models.Model):
             else:
                 # For XML-RPC, delegate to parent implementation
                 _logger.debug("Executing %s.%s via standard RPC on %s", model, method, self.name)
-                # XML-RPC connection returns a tuple (common, models)
-                common, models = connection
-                # Execute the method directly on the model
+                # XML-RPC connection returns a tuple (models, uid)
+                models, uid = connection
+                api_token = self._decrypt_sensitive_data() or self.api_key
+                # Execute the method directly on the model with API token
                 return models.execute_kw(
-                    self.database, self.env.uid, self.password,
+                    self.database, uid, api_token,
                     model, method, args, kwargs
                 )
                 

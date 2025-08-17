@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_sync_project_tree" model="ir.ui.view">
+        <field name="name">sync.project.tree</field>
+        <field name="model">sync.project</field>
+        <field name="arch" type="xml">
+            <list string="Sync Projects">
+                <field name="name"/>
+                <field name="is_sync_project"/>
+                <field name="is_client_project"/>
+                <field name="state"/>
+                <field name="last_sync_date"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_sync_project_form" model="ir.ui.view">
+        <field name="name">sync.project.form</field>
+        <field name="model">sync.project</field>
+        <field name="arch" type="xml">
+            <form string="Sync Project">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_test_connection" type="object" string="Test Connection" class="oe_stat_button" icon="fa-plug"/>
+                        <button name="action_generate_api_token" type="object" string="Generate Token" class="oe_stat_button" icon="fa-key" invisible="not is_client_project"/>
+                        <button name="action_revoke_api_token" type="object" string="Revoke Token" class="oe_stat_button" icon="fa-ban" invisible="not is_client_project"/>
+                    </div>
+                    <widget name="web_ribbon" title="Archived" bg_color="bg-danger" invisible="active"/>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="is_sync_project"/>
+                            <field name="is_client_project"/>
+                            <field name="client_key"/>
+                        </group>
+                        <group>
+                            <field name="state"/>
+                            <field name="last_sync_date"/>
+                            <field name="sync_instance_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Connection Details" invisible="not is_sync_project">
+                            <group>
+                                <group>
+                                    <field name="remote_url"/>
+                                    <field name="remote_database"/>
+                                </group>
+                                <group>
+                                    <field name="remote_username"/>
+                                    <field name="api_token" password="True"/>
+                                </group>
+                            </group>
+                        </page>
+                        <page string="Sync Models">
+                            <field name="sync_model_ids">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="model_id"/>
+                                    <field name="target_model"/>
+                                    <field name="active"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_sync_project" model="ir.actions.act_window">
+        <field name="name">Sync Projects</field>
+        <field name="res_model">sync.project</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new sync project to manage synchronization between Odoo instances.
+            </p>
+        </field>
+    </record>
+
+</odoo>

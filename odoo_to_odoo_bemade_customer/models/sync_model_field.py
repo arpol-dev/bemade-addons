@@ -56,17 +56,15 @@ class OdooToBemadeCustomerSyncModelField(models.Model):
         help='Indique si ce champ est utilisé pour identifier l\'enregistrement chez Bemade'
     )
     
-    transform_type = fields.Selection(
-        selection_add=[
-            ('none', 'Aucune transformation'),
-            ('function', 'Fonction Python'),
-            ('mapping', 'Mapping de valeurs')
-        ],
-        ondelete={'none': 'set default', 'function': 'set default', 'mapping': 'set default'},
-        default='none',
-        required=True,
-        help='Type de transformation à appliquer au champ lors de la synchronisation'
-    )
+    transform_type = fields.Selection([
+        ('none', 'Aucune transformation'),
+        ('function', 'Fonction Python'),
+        ('mapping', 'Mapping de valeurs'),
+        ('direct', 'Direct'),
+        ('computed', 'Computed'),
+        ('relation', 'Relation')
+    ], string='Type de transformation', default='none', required=True,
+       help='Type de transformation à appliquer au champ lors de la synchronisation')
     
     transform_mapping = fields.Text(
         string='Mapping de transformation',

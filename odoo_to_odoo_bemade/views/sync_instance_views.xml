@@ -34,7 +34,7 @@
                                 <attribute name="readonly">state == 'connected'</attribute>
                                 <attribute name="invisible">use_api_key</attribute>
                             </field>
-                            <field name="api_key_id">
+                            <field name="api_key" password="True">
                                 <attribute name="invisible">not use_api_key</attribute>
                                 <attribute name="required">use_api_key</attribute>
                             </field>

@@ -17,6 +17,8 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from urllib.parse import urlparse
+import http.client
+import socket
 
 # Import XML-RPC for standard connections
 # xmlrpc.client already imported above
@@ -251,11 +253,24 @@ class OdooSyncInstance(models.Model):
             if not api_token:
                 raise UserError("No API key found")
             
-            # Create XML-RPC client
+            # Create XML-RPC client with timeout-aware transport
             xmlrpc_url = f"{scheme}://{netloc}/xmlrpc/2/common"
             _logger.info("[SYNC DEBUG] Attempting XML-RPC connection to: %s", xmlrpc_url)
             
-            common = xmlrpc.client.ServerProxy(xmlrpc_url)
+            class TimeoutTransport(xmlrpc.client.Transport):
+                def __init__(self, timeout=None, use_datetime=False):
+                    super().__init__(use_datetime=use_datetime)
+                    self.timeout = timeout
+                def make_connection(self, host):
+                    conn = super().make_connection(host)
+                    try:
+                        conn.timeout = self.timeout
+                    except Exception:
+                        pass
+                    return conn
+
+            transport = TimeoutTransport(timeout=self.connection_timeout or 30)
+            common = xmlrpc.client.ServerProxy(xmlrpc_url, transport=transport, allow_none=True)
             
             # For XML-RPC, use raw API key string (not dict format)
             # This provides compatibility with older Odoo versions
@@ -322,10 +337,23 @@ class OdooSyncInstance(models.Model):
         # Get API key for authentication
         api_token = self._decrypt_sensitive_data()
         
-        # For XML-RPC, use raw API key string (not dict format)
-        common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common')
+        # For XML-RPC, use raw API key string (not dict format) with timeout-aware transport
+        class TimeoutTransport(xmlrpc.client.Transport):
+            def __init__(self, timeout=None, use_datetime=False):
+                super().__init__(use_datetime=use_datetime)
+                self.timeout = timeout
+            def make_connection(self, host):
+                conn = super().make_connection(host)
+                try:
+                    conn.timeout = self.timeout
+                except Exception:
+                    pass
+                return conn
+
+        transport = TimeoutTransport(timeout=self.connection_timeout or 30)
+        common = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/common', transport=transport, allow_none=True)
         uid = common.authenticate(self.database, self.username, api_token, {})
-        models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object')
+        models = xmlrpc.client.ServerProxy(f'{self.url}/xmlrpc/2/object', transport=transport, allow_none=True)
         
         return models, uid
         
@@ -388,6 +416,7 @@ class OdooSyncInstance(models.Model):
             jsonrpc_url = f'{self.url}/jsonrpc'
             
             # Create JSON-RPC client
+            req_timeout = self.connection_timeout or 30
             class JsonRpcClient:
                 def __init__(self, url, database, username, api_token):
                     self.url = url
@@ -461,16 +490,16 @@ class OdooSyncInstance(models.Model):
                             method='POST'
                         )
                         
-                        with urllib.request.urlopen(request, timeout=30) as response:
+                        with urllib.request.urlopen(request, timeout=req_timeout) as response:
                             response_data = response.read().decode('utf-8')
                             return json.loads(response_data)
-                            
+                        
                     except urllib.error.HTTPError as e:
                         error_content = e.read().decode('utf-8')
                         try:
                             error_data = json.loads(error_content)
                             raise UserError(f"HTTP Error {e.code}: {error_data.get('error', {}).get('message', str(e))}")
-                        except:
+                        except Exception:
                             raise UserError(f"HTTP Error {e.code}: {str(e)}")
                     except urllib.error.URLError as e:
                         raise UserError(f"Connection Error: {str(e)}")
@@ -533,7 +562,7 @@ class OdooSyncInstance(models.Model):
             headers = {'Content-Type': 'application/json'}
             req = urllib.request.Request(jsonrpc_url, data=json.dumps(data).encode('utf-8'), headers=headers)
             
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=self.connection_timeout or 30) as response:
                 response_data = json.loads(response.read().decode('utf-8'))
             
             if 'result' in response_data and response_data['result']:
@@ -573,7 +602,15 @@ class OdooSyncInstance(models.Model):
             
             # Authenticate using API token
             # Always use API token authentication in Odoo 17-18
-            odoo.login(self.database, self.username, password)
+            prev_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(self.connection_timeout or 30)
+            try:
+                odoo.login(self.database, self.username, password)
+            finally:
+                try:
+                    socket.setdefaulttimeout(prev_timeout)
+                except Exception:
+                    pass
             
             return odoo
             

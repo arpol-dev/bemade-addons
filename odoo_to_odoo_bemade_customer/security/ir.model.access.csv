@@ -13,3 +13,5 @@ access_odoo_to_bemade_customer_sync_manager_admin,odoo.to.bemade.customer.sync.m
 access_odoo_to_bemade_customer_sync_manager_user,odoo.to.bemade.customer.sync.manager user,model_odoo_to_bemade_customer_sync_manager,base.group_user,1,0,0,0
 access_odoo_to_bemade_customer_config_admin,odoo.to.bemade.customer.config admin,model_odoo_to_bemade_customer_config,base.group_system,1,1,1,1
 access_odoo_to_bemade_customer_config_user,odoo.to.bemade.customer.config user,model_odoo_to_bemade_customer_config,base.group_user,1,0,0,0
+access_odoo_to_bemade_customer_receive_wizard_admin,odoo.to.bemade.customer.receive.wizard admin,model_odoo_to_bemade_customer_receive_wizard,base.group_system,1,1,1,1
+access_odoo_to_bemade_customer_receive_wizard_user,odoo.to.bemade.customer.receive.wizard user,model_odoo_to_bemade_customer_receive_wizard,base.group_user,1,1,1,0

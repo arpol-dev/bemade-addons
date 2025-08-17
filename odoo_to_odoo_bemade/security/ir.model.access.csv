@@ -1,11 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_odoo_to_bemade_sync_model_admin,odoo.to.bemade.sync.model admin,model_odoo_to_bemade_sync_model,base.group_system,1,1,1,1
-access_odoo_to_bemade_sync_model_user,odoo.to.bemade.sync.model user,model_odoo_to_bemade_sync_model,base.group_user,1,0,0,0
-access_odoo_to_bemade_sync_model_field_admin,odoo.to.bemade.sync.model.field admin,model_odoo_to_bemade_sync_model_field,base.group_system,1,1,1,1
-access_odoo_to_bemade_sync_model_field_user,odoo.to.bemade.sync.model.field user,model_odoo_to_bemade_sync_model_field,base.group_user,1,0,0,0
 access_odoo_to_bemade_instance_admin,odoo.to.bemade.instance admin,model_odoo_to_bemade_instance,base.group_system,1,1,1,1
 access_odoo_to_bemade_instance_user,odoo.to.bemade.instance user,model_odoo_to_bemade_instance,base.group_user,1,0,0,0
-access_odoo_to_bemade_sync_log_admin,odoo.to.bemade.sync.log admin,model_odoo_to_bemade_sync_log,base.group_system,1,1,1,1
-access_odoo_to_bemade_sync_log_user,odoo.to.bemade.sync.log user,model_odoo_to_bemade_sync_log,base.group_user,1,0,0,0
-access_odoo_to_bemade_sync_queue_admin,odoo.to.bemade.sync.queue admin,model_odoo_to_bemade_sync_queue,base.group_system,1,1,1,1
-access_odoo_to_bemade_sync_queue_user,odoo.to.bemade.sync.queue user,model_odoo_to_bemade_sync_queue,base.group_user,1,0,0,0
+access_odoo_to_bemade_assign_project_wizard_admin,odoo.to.bemade.assign.project.wizard admin,model_odoo_to_bemade_assign_project_wizard,base.group_system,1,1,1,1
+access_odoo_to_bemade_assign_project_wizard_user,odoo.to.bemade.assign.project.wizard user,model_odoo_to_bemade_assign_project_wizard,base.group_user,1,1,1,0

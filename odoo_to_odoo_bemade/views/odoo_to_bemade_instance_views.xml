@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_odoo_to_bemade_instance_list" model="ir.ui.view">
+        <field name="name">odoo.to.bemade.instance.list</field>
+        <field name="model">odoo.to.bemade.instance</field>
+        <field name="arch" type="xml">
+            <list string="Client Instances">
+                <field name="name"/>
+                <field name="url"/>
+                <field name="database"/>
+                <field name="state"/>
+                <field name="last_sync_date"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_odoo_to_bemade_instance_form" model="ir.ui.view">
+        <field name="name">odoo.to.bemade.instance.form</field>
+        <field name="model">odoo.to.bemade.instance</field>
+        <field name="arch" type="xml">
+            <form string="Client Instance">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_test_connection" type="object" string="Test Connection" class="oe_stat_button" icon="fa-plug"/>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="url"/>
+                            <field name="database"/>
+                        </group>
+                        <group>
+                            <field name="username"/>
+                            <field name="api_key" password="True"/>
+                            <field name="state"/>
+                        </group>
+                    </group>
+                    <group string="Connected Projects">
+                        <field name="project_id" readonly="1">
+                            <list>
+                                <field name="name"/>
+                                <field name="is_client_project"/>
+                                <field name="client_key"/>
+                            </list>
+                        </field>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_odoo_to_bemade_instance" model="ir.actions.act_window">
+        <field name="name">Client Instances</field>
+        <field name="res_model">odoo.to.bemade.instance</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configure client Odoo instances for project synchronization.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_odoo_to_bemade_instance" name="Client Instances" parent="base.menu_custom" action="action_odoo_to_bemade_instance" sequence="20"/>
+</odoo>
