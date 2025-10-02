@@ -84,7 +84,7 @@ class K8sCluster(models.Model):
     verify_ssl = fields.Boolean(
         string="Verify SSL Certificate",
         default=True,
-        help="Disable for clusters with self-signed certificates (development only)"
+        help="Disable for clusters with self-signed certificates (development only)",
     )
 
     # Relations
@@ -132,15 +132,21 @@ class K8sCluster(models.Model):
 
                 # Get the configuration and ensure SSL verification is properly set
                 configuration = client.Configuration.get_default_copy()
-                
+
                 # Apply SSL verification setting from cluster configuration
                 configuration.verify_ssl = self.verify_ssl
                 if not self.verify_ssl:
-                    _logger.warning(f"SSL verification disabled for cluster {self.name} - use only for development!")
+                    _logger.warning(
+                        f"SSL verification disabled for cluster {self.name} - use only for development!"
+                    )
 
                 # If we have certificate-authority-data in kubeconfig, it should be used
                 # The kubernetes client should handle this automatically, but let's ensure it's set
-                if self.verify_ssl and configuration.ssl_ca_cert is None and "clusters" in kubeconfig_dict:
+                if (
+                    self.verify_ssl
+                    and configuration.ssl_ca_cert is None
+                    and "clusters" in kubeconfig_dict
+                ):
                     for cluster_info in kubeconfig_dict["clusters"]:
                         if "certificate-authority-data" in cluster_info.get(
                             "cluster", {}
@@ -239,22 +245,47 @@ class K8sCluster(models.Model):
             for item in instances.get("items", []):
                 metadata = item.get("metadata", {})
                 spec = item.get("spec", {})
-                status = item.get("status", {})
+                name = metadata.get("name")
+                namespace = metadata.get("namespace")
+
+                # Fetch status separately using the status subresource
+                status = {}
+                try:
+                    status_obj = custom_api.get_namespaced_custom_object_status(
+                        group="bemade.org",
+                        version="v1",
+                        namespace=namespace,
+                        plural="odooinstances",
+                        name=name,
+                    )
+                    status = (
+                        status_obj.get("status", {})
+                        if isinstance(status_obj, dict)
+                        else {}
+                    )
+                    _logger.info(
+                        f"Fetched status for {name}: {list(status.keys()) if isinstance(status, dict) else 'not dict'}"
+                    )
+                except Exception as e:
+                    _logger.warning(f"Could not fetch status for {name}: {e}")
+                    # Fall back to status from list (might be empty)
+                    status = item.get("status", {})
 
                 # Find or create the instance record
                 instance = self.env["k8s.odoo.instance"].search(
                     [
                         ("cluster_id", "=", self.id),
-                        ("name", "=", metadata.get("name")),
-                        ("namespace", "=", metadata.get("namespace")),
+                        ("name", "=", name),
+                        ("namespace", "=", namespace),
                     ],
                     limit=1,
                 )
 
-                values = {
+                # Prepare instance data
+                instance_data = {
                     "cluster_id": self.id,
-                    "name": metadata.get("name"),
-                    "namespace": metadata.get("namespace"),
+                    "name": name,
+                    "namespace": namespace,
                     "spec": json.dumps(spec, indent=2),
                     "status": json.dumps(status, indent=2),
                     "phase": status.get("phase", "Unknown"),
@@ -263,9 +294,9 @@ class K8sCluster(models.Model):
                 }
 
                 if instance:
-                    instance.write(values)
+                    instance.write(instance_data)
                 else:
-                    self.env["k8s.odoo.instance"].create(values)
+                    self.env["k8s.odoo.instance"].create(instance_data)
 
                 synced_count += 1
 

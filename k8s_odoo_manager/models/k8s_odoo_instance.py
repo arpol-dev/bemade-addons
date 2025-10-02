@@ -2,6 +2,7 @@ import json
 import logging
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
+from kubernetes import client
 
 _logger = logging.getLogger(__name__)
 
@@ -67,45 +68,218 @@ class K8sOdooInstance(models.Model):
         help="Last time this record was synchronized from Kubernetes",
     )
 
-    # Computed fields from spec
-    image = fields.Char(
-        string="Docker Image", compute="_compute_spec_fields", store=True
+    # Real-time computed fields from cluster (always fresh)
+    current_image = fields.Char(
+        string="Current Image", compute="_compute_current_values"
+    )
+    current_replicas = fields.Integer(
+        string="Current Replicas", compute="_compute_current_values"
+    )
+    current_ingress_hosts = fields.Text(
+        string="Current Ingress Hosts", compute="_compute_current_values"
+    )
+    current_cpu_request = fields.Char(
+        string="Current CPU Request", compute="_compute_current_values"
+    )
+    current_cpu_limit = fields.Char(
+        string="Current CPU Limit", compute="_compute_current_values"
+    )
+    current_memory_request = fields.Char(
+        string="Current Memory Request", compute="_compute_current_values"
+    )
+    current_memory_limit = fields.Char(
+        string="Current Memory Limit", compute="_compute_current_values"
+    )
+    current_ingress_enabled = fields.Boolean(
+        string="Current Ingress Enabled", compute="_compute_current_values"
     )
 
-    replicas = fields.Integer(
-        string="Replicas", compute="_compute_spec_fields", store=True
+    # Editable spec fields (will sync back to cluster)
+    image_editable = fields.Char(
+        string="Docker Image", help="Docker image for the Odoo instance"
     )
 
-    ingress_hosts = fields.Text(
-        string="Ingress Hosts", compute="_compute_spec_fields", store=True
+    replicas_editable = fields.Integer(
+        string="Replicas", default=1, help="Number of replicas to run"
     )
 
-    @api.depends("spec")
-    def _compute_spec_fields(self):
-        """Extract commonly used fields from spec JSON"""
+    # Resource fields
+    cpu_request = fields.Char(
+        string="CPU Request", help="CPU request (e.g., '100m', '0.5')"
+    )
+
+    cpu_limit = fields.Char(string="CPU Limit", help="CPU limit (e.g., '1000m', '2')")
+
+    memory_request = fields.Char(
+        string="Memory Request", help="Memory request (e.g., '512Mi', '1Gi')"
+    )
+
+    memory_limit = fields.Char(
+        string="Memory Limit", help="Memory limit (e.g., '1Gi', '2Gi')"
+    )
+
+    # Ingress fields
+    ingress_enabled = fields.Boolean(string="Enable Ingress", default=True)
+
+    ingress_hosts_editable = fields.Text(
+        string="Ingress Hosts", help="One host per line"
+    )
+
+    # Filestore fields
+    filestore_enabled = fields.Boolean(string="Enable Filestore", default=True)
+
+    filestore_size = fields.Char(
+        string="Filestore Size",
+        default="10Gi",
+        help="Size of the filestore PVC (e.g., '10Gi', '50Gi')",
+    )
+
+    # Status fields
+    ready_replicas = fields.Integer(
+        string="Ready Replicas", compute="_compute_status_fields", store=True
+    )
+
+    # Computed fields to detect changes
+    has_pending_changes = fields.Boolean(
+        string="Has Pending Changes", compute="_compute_pending_changes"
+    )
+
+    image_changed = fields.Boolean(
+        string="Image Changed", compute="_compute_pending_changes"
+    )
+
+    replicas_changed = fields.Boolean(
+        string="Replicas Changed", compute="_compute_pending_changes"
+    )
+
+    available_replicas = fields.Integer(
+        string="Available Replicas", compute="_compute_status_fields", store=True
+    )
+
+    ingress_url = fields.Char(
+        string="Ingress URL", compute="_compute_status_fields", store=True
+    )
+
+    conditions = fields.Text(
+        string="Conditions", compute="_compute_status_fields", store=True
+    )
+
+    def _compute_current_values(self):
+        """Fetch current values from cluster in real-time"""
         for instance in self:
-            if instance.spec:
-                try:
-                    spec_data = json.loads(instance.spec)
-                    instance.image = spec_data.get("image", "")
-                    instance.replicas = spec_data.get("replicas", 0)
+            # Initialize with empty values
+            instance.current_image = ""
+            instance.current_replicas = 0
+            instance.current_ingress_hosts = ""
+            instance.current_cpu_request = ""
+            instance.current_cpu_limit = ""
+            instance.current_memory_request = ""
+            instance.current_memory_limit = ""
+            instance.current_ingress_enabled = False
 
-                    # Extract ingress hosts
-                    ingress = spec_data.get("ingress", {})
-                    hosts = ingress.get("hosts", [])
-                    instance.ingress_hosts = ", ".join(hosts) if hosts else ""
+            if not instance.cluster_id or not instance.cluster_id.active:
+                continue
+
+            try:
+                k8s_client = instance.cluster_id._get_k8s_client()
+                custom_api = client.CustomObjectsApi(k8s_client)
+
+                # Fetch the current object from cluster
+                obj = custom_api.get_namespaced_custom_object(
+                    group="bemade.org",
+                    version="v1",
+                    namespace=instance.namespace,
+                    plural="odooinstances",
+                    name=instance.name,
+                )
+
+                # Extract spec values
+                spec = obj.get("spec", {})
+                instance.current_image = spec.get("image", "")
+                instance.current_replicas = spec.get("replicas", 0)
+
+                # Extract ingress
+                ingress = spec.get("ingress", {})
+                instance.current_ingress_enabled = ingress.get("enabled", False)
+                hosts = ingress.get("hosts", [])
+                instance.current_ingress_hosts = ", ".join(hosts) if hosts else ""
+
+                # Extract resources
+                resources = spec.get("resources", {})
+                requests = resources.get("requests", {})
+                limits = resources.get("limits", {})
+                instance.current_cpu_request = requests.get("cpu", "")
+                instance.current_memory_request = requests.get("memory", "")
+                instance.current_cpu_limit = limits.get("cpu", "")
+                instance.current_memory_limit = limits.get("memory", "")
+
+            except Exception as e:
+                _logger.warning(
+                    f"Could not fetch current values for {instance.name}: {e}"
+                )
+                # Values remain empty as initialized above
+
+    @api.depends("status")
+    def _compute_status_fields(self):
+        """Extract status information from status JSON"""
+        for instance in self:
+            if instance.status:
+                try:
+                    status_data = json.loads(instance.status)
+
+                    # Extract replica counts
+                    instance.ready_replicas = status_data.get("readyReplicas", 0)
+                    instance.available_replicas = status_data.get(
+                        "availableReplicas", 0
+                    )
+
+                    # Extract ingress URL
+                    ingress_status = status_data.get("ingress", {})
+                    urls = ingress_status.get("urls", [])
+                    instance.ingress_url = urls[0] if urls else ""
+
+                    # Extract conditions
+                    conditions = status_data.get("conditions", [])
+                    condition_strings = []
+                    for condition in conditions:
+                        ctype = condition.get("type", "")
+                        status = condition.get("status", "")
+                        reason = condition.get("reason", "")
+                        condition_strings.append(f"{ctype}: {status} ({reason})")
+                    instance.conditions = "\n".join(condition_strings)
 
                 except (json.JSONDecodeError, KeyError) as e:
                     _logger.warning(
-                        f"Failed to parse spec for instance {instance.name}: {e}"
+                        f"Failed to parse status for instance {instance.name}: {e}"
                     )
-                    instance.image = ""
-                    instance.replicas = 0
-                    instance.ingress_hosts = ""
+                    instance.ready_replicas = 0
+                    instance.available_replicas = 0
+                    instance.ingress_url = ""
+                    instance.conditions = ""
             else:
-                instance.image = ""
-                instance.replicas = 0
-                instance.ingress_hosts = ""
+                instance.ready_replicas = 0
+                instance.available_replicas = 0
+                instance.ingress_url = ""
+                instance.conditions = ""
+
+    @api.depends(
+        "image_editable", "current_image", "replicas_editable", "current_replicas"
+    )
+    def _compute_pending_changes(self):
+        """Compute if there are pending changes to sync"""
+        for instance in self:
+            image_changed = bool(
+                instance.image_editable
+                and instance.image_editable != instance.current_image
+            )
+            replicas_changed = bool(
+                instance.replicas_editable
+                and instance.replicas_editable != instance.current_replicas
+            )
+
+            instance.image_changed = image_changed
+            instance.replicas_changed = replicas_changed
+            instance.has_pending_changes = image_changed or replicas_changed
 
     def name_get(self):
         """Custom name display"""
@@ -179,17 +353,168 @@ class K8sOdooInstance(models.Model):
             },
         }
 
-    def action_refresh(self):
-        """Refresh this instance from Kubernetes"""
+    def action_reset_to_current(self):
+        """Reset editable fields to current cluster values"""
         self.ensure_one()
-        return self.cluster_id.sync_odoo_instances()
+
+        # Copy current values to editable fields (current values are computed fresh)
+        self.write(
+            {
+                "image_editable": self.current_image,
+                "replicas_editable": self.current_replicas,
+                "cpu_request": self.current_cpu_request,
+                "cpu_limit": self.current_cpu_limit,
+                "memory_request": self.current_memory_request,
+                "memory_limit": self.current_memory_limit,
+                "ingress_enabled": self.current_ingress_enabled,
+                "ingress_hosts_editable": self.current_ingress_hosts,
+            }
+        )
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Reset Complete"),
+                "message": _("All fields reset to current cluster values"),
+                "type": "success",
+            },
+        }
+
+    def action_sync_to_cluster(self):
+        """Public method to sync changes to cluster"""
+        self.ensure_one()
+        try:
+            self._patch_to_cluster()
+
+            # Show success notification and refresh form
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "title": _("Sync Successful"),
+                    "message": _("Successfully synced %s to cluster") % self.name,
+                    "type": "success",
+                    "sticky": False,
+                    "next": {
+                        "type": "ir.actions.act_window",
+                        "res_model": "k8s.odoo.instance",
+                        "res_id": self.id,
+                        "view_mode": "form",
+                        "views": [(False, "form")],
+                        "target": "current",
+                    },
+                },
+            }
+        except Exception as e:
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "title": _("Sync Failed"),
+                    "message": _("Failed to sync %s: %s") % (self.name, str(e)),
+                    "type": "danger",
+                },
+            }
+
+    def _patch_to_cluster(self):
+        """Patch this instance's changes back to the cluster"""
+        self.ensure_one()
+
+        if not self.cluster_id.active:
+            _logger.warning(
+                f"Cluster {self.cluster_id.name} is not active, skipping sync"
+            )
+            return
+
+        try:
+            k8s_client = self.cluster_id._get_k8s_client()
+            custom_api = client.CustomObjectsApi(k8s_client)
+
+            # Build the patch data from editable fields
+            patch_data = self._build_patch_data()
+
+            if not patch_data:
+                _logger.info(f"No changes to sync for {self.name}")
+                return
+
+            _logger.info(f"Patching {self.name} with: {patch_data}")
+
+            # Apply the patch
+            custom_api.patch_namespaced_custom_object(
+                group="bemade.org",
+                version="v1",
+                namespace=self.namespace,
+                plural="odooinstances",
+                name=self.name,
+                body=patch_data,
+            )
+
+            _logger.info(f"Successfully patched {self.name} to cluster")
+
+        except Exception as e:
+            error_msg = f"Failed to patch {self.name} to cluster: {e}"
+            _logger.error(error_msg)
+            raise UserError(_(error_msg))
+
+    def _build_patch_data(self):
+        """Build patch data from editable fields"""
+        self.ensure_one()
+
+        patch = {"spec": {}}
+
+        # Image
+        if self.image_editable:
+            patch["spec"]["image"] = self.image_editable
+
+        # Replicas
+        if self.replicas_editable:
+            patch["spec"]["replicas"] = self.replicas_editable
+
+        # Resources
+        resources = {}
+        if (
+            self.cpu_request
+            or self.cpu_limit
+            or self.memory_request
+            or self.memory_limit
+        ):
+            if self.cpu_request or self.memory_request:
+                resources["requests"] = {}
+                if self.cpu_request:
+                    resources["requests"]["cpu"] = self.cpu_request
+                if self.memory_request:
+                    resources["requests"]["memory"] = self.memory_request
+
+            if self.cpu_limit or self.memory_limit:
+                resources["limits"] = {}
+                if self.cpu_limit:
+                    resources["limits"]["cpu"] = self.cpu_limit
+                if self.memory_limit:
+                    resources["limits"]["memory"] = self.memory_limit
+
+        if resources:
+            patch["spec"]["resources"] = resources
+
+        # Ingress
+        if hasattr(self, "ingress_enabled"):  # Check if field exists
+            ingress = {"enabled": self.ingress_enabled}
+            if self.ingress_hosts_editable:
+                # Parse hosts (support both comma and newline separated)
+                hosts = self.ingress_hosts_editable.replace("\n", ",").split(",")
+                hosts = [h.strip() for h in hosts if h.strip()]
+                if hosts:
+                    ingress["hosts"] = hosts
+            patch["spec"]["ingress"] = ingress
+
+        # Return None if no actual changes
+        return patch if patch["spec"] else None
 
 
 class K8sSpecViewer(models.TransientModel):
     """Transient model for displaying JSON content in a dialog"""
 
     _name = "k8s.spec.viewer"
-    _description = "Kubernetes Spec/Status Viewer"
+    _description = "Kubernetes Spec Viewer"
 
     title = fields.Char(string="Title", readonly=True)
     content = fields.Text(string="Content", readonly=True)
