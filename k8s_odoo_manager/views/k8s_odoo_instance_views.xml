@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Instance List View -->
+    <record id="view_k8s_odoo_instance_list" model="ir.ui.view">
+        <field name="name">k8s.odoo.instance.list</field>
+        <field name="model">k8s.odoo.instance</field>
+        <field name="arch" type="xml">
+            <list string="Odoo Instances" decoration-success="phase == 'Running'" decoration-warning="phase == 'Upgrading'" decoration-danger="phase == 'Restoring'">
+                <field name="cluster_id"/>
+                <field name="namespace"/>
+                <field name="name"/>
+                <field name="image"/>
+                <field name="replicas"/>
+                <field name="phase" widget="badge"/>
+                <field name="url" widget="url"/>
+                <field name="last_updated"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Instance Form View -->
+    <record id="view_k8s_odoo_instance_form" model="ir.ui.view">
+        <field name="name">k8s.odoo.instance.form</field>
+        <field name="model">k8s.odoo.instance</field>
+        <field name="arch" type="xml">
+            <form string="Odoo Instance" create="false" edit="false">
+                <header>
+                    <button name="action_open_url" string="Open Instance" type="object" class="btn-primary" invisible="not url"/>
+                    <button name="action_refresh" string="Refresh" type="object" class="btn-secondary"/>
+                    <field name="phase" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name"/>
+                        </h1>
+                        <h2>
+                            <field name="cluster_id" readonly="1"/> / <field name="namespace" readonly="1"/>
+                        </h2>
+                    </div>
+                    
+                    <group>
+                        <group string="Basic Information">
+                            <field name="image"/>
+                            <field name="replicas"/>
+                            <field name="url" widget="url"/>
+                            <field name="last_updated"/>
+                        </group>
+                        <group string="Network">
+                            <field name="ingress_hosts"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Specification">
+                            <div class="row">
+                                <div class="col-12">
+                                    <button name="action_view_spec" string="View Full Spec" type="object" class="btn btn-link"/>
+                                </div>
+                            </div>
+                            <field name="spec" widget="text" readonly="1"/>
+                        </page>
+                        <page string="Status">
+                            <div class="row">
+                                <div class="col-12">
+                                    <button name="action_view_status" string="View Full Status" type="object" class="btn btn-link"/>
+                                </div>
+                            </div>
+                            <field name="status" widget="text" readonly="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Instance Search View -->
+    <record id="view_k8s_odoo_instance_search" model="ir.ui.view">
+        <field name="name">k8s.odoo.instance.search</field>
+        <field name="model">k8s.odoo.instance</field>
+        <field name="arch" type="xml">
+            <search string="Search Instances">
+                <field name="name"/>
+                <field name="cluster_id"/>
+                <field name="namespace"/>
+                <field name="image"/>
+                <field name="url"/>
+                <separator/>
+                <filter string="Running" name="running" domain="[('phase', '=', 'Running')]"/>
+                <filter string="Upgrading" name="upgrading" domain="[('phase', '=', 'Upgrading')]"/>
+                <filter string="Restoring" name="restoring" domain="[('phase', '=', 'Restoring')]"/>
+                <separator/>
+                <group expand="0" string="Group By">
+                    <filter string="Cluster" name="group_cluster" domain="[]" context="{'group_by': 'cluster_id'}"/>
+                    <filter string="Namespace" name="group_namespace" domain="[]" context="{'group_by': 'namespace'}"/>
+                    <filter string="Phase" name="group_phase" domain="[]" context="{'group_by': 'phase'}"/>
+                    <filter string="Image" name="group_image" domain="[]" context="{'group_by': 'image'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Instance Action -->
+    <record id="action_k8s_odoo_instance" model="ir.actions.act_window">
+        <field name="name">Odoo Instances</field>
+        <field name="res_model">k8s.odoo.instance</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No Odoo instances found!
+            </p>
+            <p>
+                Sync your clusters to discover Odoo instances running in Kubernetes.
+            </p>
+        </field>
+    </record>
+
+    <!-- Spec Viewer Views -->
+    <record id="view_k8s_spec_viewer_form" model="ir.ui.view">
+        <field name="name">k8s.spec.viewer.form</field>
+        <field name="model">k8s.spec.viewer</field>
+        <field name="arch" type="xml">
+            <form string="Spec Viewer">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="title" readonly="1"/>
+                        </h1>
+                    </div>
+                    <field name="content" widget="text" readonly="1"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>
