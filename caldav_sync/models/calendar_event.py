@@ -93,7 +93,7 @@ def _parse_rrule_string(rrule_str: str) -> Dict[str, Any]:
 
 def _extract_vcal_email(vcal_address):
     email_regex = re.compile(r"[a-z0-9.\-+_]+@[a-z0-9.\-+_]+\.[a-z]+")
-    res = email_regex.search(str(vcal_address))
+    res = email_regex.search(str(vcal_address).lower())
     return res.group(0).lower().strip() if res else ""
 
 
@@ -975,6 +975,8 @@ class CalendarEvent(models.Model):
         attendee_emails = self._get_ical_attendee_emails(component)
         # Add organizer to attendees if present
         organizer = component.get("organizer")
+        if organizer and not _extract_vcal_email(organizer):
+            import pdb; pdb.set_trace()
         if organizer:
             organizer_email = _extract_vcal_email(organizer)
             if organizer_email not in attendee_emails:
