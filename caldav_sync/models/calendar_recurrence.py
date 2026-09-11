@@ -43,7 +43,16 @@ class RecurrenceRule(models.Model):
         else:
             for vals in vals_list:
                 base_event = self.env["calendar.event"].browse(vals["base_event_id"])
-                vals.update(caldav_uid=base_event.caldav_uid)
+                caldav_uid = base_event.caldav_uid
+                if caldav_uid and self.search_count([("caldav_uid", "=", caldav_uid)]):
+                    # A recurrence with this caldav_uid already exists (e.g. Odoo
+                    # split off a new calendar.recurrence from an already-synced
+                    # series on write(), such as a "this and following" edit).
+                    # Reusing the same caldav_uid would violate the uniqueness
+                    # constraint above, so this new recurrence gets its own
+                    # fresh id instead, same as a non-CalDAV-originated one.
+                    caldav_uid = str(uuid.uuid4())
+                vals.update(caldav_uid=caldav_uid)
         return super().create(vals_list)
 
     @api.model
