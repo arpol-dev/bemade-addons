@@ -1005,8 +1005,6 @@ class CalendarEvent(models.Model):
         attendee_emails = self._get_ical_attendee_emails(component)
         # Add organizer to attendees if present
         organizer = component.get("organizer")
-        if organizer and not _extract_vcal_email(organizer):
-            import pdb; pdb.set_trace()
         if organizer:
             organizer_email = _extract_vcal_email(organizer)
             if organizer_email not in attendee_emails:
