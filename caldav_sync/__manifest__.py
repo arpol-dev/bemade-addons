@@ -8,15 +8,22 @@
 
 {
     "name": "CalDAV Synchronization",
-    "version": "18.0.0.8.1",
+    "version": "18.0.0.8.2",
     "license": "LGPL-3",
     "category": "Productivity",
     "summary": "Synchronize Odoo Calendar Events with CalDAV Servers",
     "author": "Bemade Inc.",
     "website": "https://www.bemade.org",
     "depends": ["base", "calendar"],
+    # caldav 2.0.1 requires icalendar > 6.0.0; icalendar 7.x breaks caldav's create_ical
+    # (TypeError: 'module' object is not subscriptable), so creating events in CalDAV fails.
     "external_dependencies": {
-        "python": ["caldav>=1.3.9,<=2.0.1", "icalendar", "markdownify", "markdown2"],
+        "python": [
+            "caldav>=1.3.9,<=2.0.1",
+            "icalendar>6.0.0,<7",
+            "markdownify",
+            "markdown2",
+        ],
     },
     "images": ["static/description/images/main_screenshot.png"],
     "data": [
