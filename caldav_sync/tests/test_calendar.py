@@ -475,3 +475,18 @@ END:VCALENDAR"""
         # Compare just the datetime values (timezone handling may differ)
         self.assertEqual(values_duration["stop"], expected_stop,
             "stop should be start + duration")
+
+
+@tagged("post_install", "-at_install")
+class TestCaldavIcalendarCompatibility(TransactionCase):
+    def test_caldav_creates_ical_with_pinned_icalendar(self):
+        """caldav's create_ical must work with the icalendar version we pin.
+
+        icalendar 7.x removed the mapping caldav 2.0.1 indexes into, which made every
+        event creation sent to CalDAV fail with "'module' object is not subscriptable".
+        """
+        from caldav.lib.vcal import create_ical
+
+        ical = create_ical(summary="Test", uid="uid-compat-1")
+        self.assertIn("BEGIN:VEVENT", ical)
+        self.assertIn("UID:uid-compat-1", ical)
