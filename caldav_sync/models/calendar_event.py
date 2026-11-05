@@ -89,6 +89,27 @@ def _parse_rrule_string(rrule_str: str) -> Dict[str, Any]:
     return result
 
 
+def _event_data_to_ical(event_data: Dict) -> str:
+    """Serialize calendar.event data into a VCALENDAR string.
+
+    caldav's create_ical builds the calendar through icalendar.cal.component_factory,
+    which icalendar 7 no longer provides as a mapping. Building the string here sends
+    the same properties without that code path.
+    """
+    event = icalendar.Event()
+    event.add("dtstamp", datetime.now(tz=utc))
+    for name, value in event_data.items():
+        for item in (value if isinstance(value, list) else [value]):
+            if isinstance(item, (vDate, vDatetime)):
+                item = item.dt
+            event.add(name, item)
+    calendar = icalendar.Calendar()
+    calendar.add("prodid", "-//python-caldav//caldav//en_DK")
+    calendar.add("version", "2.0")
+    calendar.add_component(event)
+    return calendar.to_ical().decode("utf-8")
+
+
 def _extract_vcal_email(vcal_address):
     email_regex = re.compile(r"[a-z0-9.\-+_]+@[a-z0-9.\-+_]+\.[a-z]+")
     res = email_regex.search(str(vcal_address).lower())
@@ -442,10 +463,12 @@ class CalendarEvent(models.Model):
         :return: The list of created events, usually one.
         """
         ical_event_data = self._create_event_data()
-        caldav_event = calendar.save_event(**ical_event_data)
+        caldav_event = calendar.save_event(ical=_event_data_to_ical(ical_event_data))
         if self.recurrence_id and self.is_base_event and not self.follow_recurrence:
             ical_event_data = self._create_event_data()
-            second_caldav_event = calendar.save_event(**ical_event_data)
+            second_caldav_event = calendar.save_event(
+                ical=_event_data_to_ical(ical_event_data)
+            )
             return [caldav_event, second_caldav_event]
         return [caldav_event]
 

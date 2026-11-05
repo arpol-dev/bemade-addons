@@ -17,8 +17,14 @@
     "depends": ["base", "calendar"],
     "development_status": "Beta",
     # caldav > 2.0.1 is not compatible with Odoo 18.0 due to new dependencies introduced
+    # caldav 2.0.1 requires icalendar > 6.0.0
     "external_dependencies": {
-        "python": ["caldav>=1.3.9,<=2.0.1", "icalendar", "markdownify", "markdown2"],
+        "python": [
+            "caldav>=1.3.9,<=2.0.1",
+            "icalendar>6.0.0",
+            "markdownify",
+            "markdown2",
+        ],
     },
     "images": ["static/description/images/main_screenshot.png"],
     "data": [
