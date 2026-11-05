@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import DEFAULT, MagicMock, patch
 
@@ -475,3 +475,64 @@ END:VCALENDAR"""
         # Compare just the datetime values (timezone handling may differ)
         self.assertEqual(values_duration["stop"], expected_stop,
             "stop should be start + duration")
+
+
+@tagged("post_install", "-at_install")
+class TestCaldavEventCreation(TransactionCase):
+    def test_event_data_serialized_without_caldav_create_ical(self):
+        """The VCALENDAR is built by caldav_sync, so icalendar 7 can be used."""
+        from icalendar import vCalAddress, vDatetime, vText
+
+        from odoo.addons.caldav_sync.models.calendar_event import _event_data_to_ical
+
+        attendees = [vCalAddress("MAILTO:a@example.com"), vCalAddress("MAILTO:b@example.com")]
+        ical = _event_data_to_ical(
+            {
+                "uid": vText("uid-serialize-1"),
+                "summary": vText("Réunion"),
+                "dtstart": vDatetime(datetime(2027, 1, 8, 9, 0)),
+                "dtend": vDatetime(datetime(2027, 1, 8, 10, 0)),
+                "organizer": vCalAddress("MAILTO:org@example.com"),
+                "attendee": attendees,
+            }
+        )
+        self.assertTrue(ical.startswith("BEGIN:VCALENDAR"))
+        parsed = icalendar.Calendar.from_ical(ical).walk("VEVENT")[0]
+        self.assertEqual(str(parsed["uid"]), "uid-serialize-1")
+        self.assertEqual(str(parsed["summary"]), "Réunion")
+        self.assertEqual(len(parsed.get("attendee")), 2)
+        self.assertIsNotNone(parsed.get("dtstamp"))
+
+    def test_allday_event_data_keeps_date_values(self):
+        """All-day values are written as DATE values, as RFC 5545 requires."""
+        from icalendar import vDate
+
+        from odoo.addons.caldav_sync.models.calendar_event import _event_data_to_ical
+
+        ical = _event_data_to_ical(
+            {
+                "uid": "uid-allday-1",
+                "dtstart": vDate(date(2027, 1, 8)),
+                "dtend": vDate(date(2027, 1, 10)),
+            }
+        )
+        self.assertIn("DTSTART;VALUE=DATE:20270108", ical)
+        self.assertIn("DTEND;VALUE=DATE:20270110", ical)
+
+    def test_create_in_icalendar_sends_ical_string(self):
+        """_create_in_icalendar hands caldav a full VCALENDAR string, not kwargs."""
+        calendar = MagicMock()
+        event = self.env["calendar.event"].create(
+            {
+                "name": "Création",
+                "start": datetime(2027, 1, 8, 9, 0),
+                "stop": datetime(2027, 1, 8, 10, 0),
+            }
+        )
+        event._create_in_icalendar(calendar)
+        calendar.save_event.assert_called_once()
+        args, kwargs = calendar.save_event.call_args
+        self.assertEqual(args, ())
+        self.assertEqual(list(kwargs), ["ical"])
+        self.assertTrue(kwargs["ical"].startswith("BEGIN:VCALENDAR"))
+        self.assertIn(f"UID:{event.caldav_uid}", kwargs["ical"])
