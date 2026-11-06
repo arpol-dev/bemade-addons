@@ -475,3 +475,41 @@ END:VCALENDAR"""
         # Compare just the datetime values (timezone handling may differ)
         self.assertEqual(values_duration["stop"], expected_stop,
             "stop should be start + duration")
+
+
+@tagged("post_install", "-at_install")
+class TestRecurrenceCaldavUid(TransactionCase):
+    def test_split_series_gets_its_own_caldav_uid(self):
+        """A new recurrence created from an already-synced series must not reuse
+        its caldav_uid, which would violate the unique constraint."""
+        event = self.env["calendar.event"].create(
+            {
+                "name": "Série",
+                "start": datetime(2027, 1, 8, 9, 0),
+                "stop": datetime(2027, 1, 8, 10, 0),
+                "recurrency": True,
+                "rrule_type": "weekly",
+                "interval": 1,
+                "fri": True,
+                "end_type": "count",
+                "count": 3,
+            }
+        )
+        first = event.recurrence_id
+        self.assertEqual(event.caldav_uid, first.caldav_uid)
+        second = (
+            self.env["calendar.recurrence"]
+            .with_context(caldav_keep_ids=True)
+            .create(
+                {
+                    "base_event_id": event.id,
+                    "rrule_type": "weekly",
+                    "interval": 1,
+                    "fri": True,
+                    "end_type": "count",
+                    "count": 2,
+                }
+            )
+        )
+        self.assertTrue(second.caldav_uid)
+        self.assertNotEqual(second.caldav_uid, first.caldav_uid)
