@@ -613,6 +613,29 @@ class TestAllDayRecurrenceExport(TransactionCase):
             lambda event: not event.is_base_event
         )[:1]
 
+    def test_timed_recurrence_rule_is_exported(self):
+        """The RRULE line is exported, not an empty rule (str() of the rule starts
+        with DTSTART)."""
+        base = self.env["calendar.event"].create(
+            {
+                "name": "Réunion",
+                "event_tz": "Europe/Paris",
+                "start": datetime(2027, 1, 8, 9, 0),
+                "stop": datetime(2027, 1, 8, 10, 0),
+                "recurrency": True,
+                "rrule_type": "weekly",
+                "interval": 1,
+                "fri": True,
+                "end_type": "end_date",
+                "until": date(2027, 1, 29),
+            }
+        )
+        data = {}
+        base._add_event_recurrence(data)
+        rule = data["rrule"].to_ical().decode("utf-8")
+        self.assertIn("FREQ=WEEKLY", rule)
+        self.assertIn("BYDAY=FR", rule)
+
     def test_allday_recurrence_end_is_exported_as_date(self):
         """RFC 5545: UNTIL has the same type as DTSTART, so a DATE for all-day events."""
         base, _occurrence = self._allday_series()

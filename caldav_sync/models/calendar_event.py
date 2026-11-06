@@ -43,16 +43,14 @@ def _parse_rrule_string(rrule_str: str) -> Dict[str, Any]:
     Takes a string like "RRULE:FREQ=WEEKLY;UNTIL=20221231T000000Z;BYDAY=MO"
     and returns a dictionary with proper types for vRecur.
     """
-    from icalendar import vDDDTypes, vWeekday, vFrequency
+    from icalendar import vWeekday, vFrequency
 
     def parse_value(key: str, value: str) -> Any:
         if key == "UNTIL":
-            # Convert to datetime and wrap in vDDDTypes
+            # Keep a date or a datetime, vRecur writes it in the right format
             if "T" in value:
-                dt = datetime.strptime(value, "%Y%m%dT%H%M%S")
-            else:
-                dt = datetime.strptime(value, "%Y%m%d")
-            return vDDDTypes(dt)
+                return datetime.strptime(value, "%Y%m%dT%H%M%S")
+            return datetime.strptime(value, "%Y%m%d").date()
         elif key in ("WKST", "BYDAY", "BYWEEKDAY"):
             # Convert to vWeekday
             return [vWeekday(day) for day in value.split(",")]
@@ -509,14 +507,29 @@ class CalendarEvent(models.Model):
         """Add the recurrence-id parameter to event data if self is linked
         to a calendar.recurrence record."""
         if self.recurrence_id:
-            event_data["recurrence-id"] = vDatetime(self._get_ical_recurrence_id())
+            recurrence_id = self._get_ical_recurrence_id()
+            if self.allday:
+                event_data["recurrence-id"] = vDate(recurrence_id.date())
+            else:
+                event_data["recurrence-id"] = vDatetime(recurrence_id)
 
     def _add_event_recurrence(self, event_data: Dict) -> None:
         """Add the recurrence rule (rrule) to event data if self is
         recurrent. This should only be called for base events."""
         if self.recurrence_id:
-            rrule = str(self.recurrence_id._get_rrule())
+            # str() of the dateutil rule starts with DTSTART, the RRULE line comes next
+            rrule = next(
+                (
+                    line
+                    for line in str(self.recurrence_id._get_rrule()).splitlines()
+                    if line.startswith("RRULE:")
+                ),
+                "",
+            )
             rrule_dict = _parse_rrule_string(rrule)
+            if self.allday and "UNTIL" in rrule_dict:
+                until = rrule_dict["UNTIL"]
+                rrule_dict["UNTIL"] = until.date() if isinstance(until, datetime) else until
             event_data["rrule"] = vRecur(**rrule_dict)
 
     def _add_event_attendees(self, event_data: Dict) -> None:
