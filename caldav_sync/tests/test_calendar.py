@@ -737,3 +737,31 @@ class TestAllDayCaldavMatch(TransactionCase):
         self.assertTrue(event._matches_caldav_start(caldav_event))
         component["dtstart"] = icalendar.vDate(date(2027, 1, 9))
         self.assertFalse(event._matches_caldav_start(caldav_event))
+
+
+@tagged("post_install", "-at_install")
+class TestOccurrenceWithoutTimezone(TransactionCase):
+    def test_occurrence_without_timezone_exports_recurrence_id(self):
+        """An event without timezone (event and user) must not crash the export."""
+        self.env.user.tz = False
+        event = self.env["calendar.event"].create(
+            {
+                "name": "Sans fuseau",
+                "event_tz": False,
+                "start": datetime(2027, 3, 5, 8, 0),
+                "stop": datetime(2027, 3, 5, 9, 0),
+                "recurrency": True,
+                "rrule_type": "weekly",
+                "interval": 1,
+                "fri": True,
+                "end_type": "count",
+                "count": 3,
+            }
+        )
+        occurrence = event.recurrence_id.calendar_event_ids.filtered(
+            lambda e: not e.is_base_event
+        )[:1]
+        self.assertTrue(occurrence)
+        data = {}
+        occurrence._add_event_recurrence_id(data)
+        self.assertIn("recurrence-id", data)

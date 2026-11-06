@@ -210,7 +210,7 @@ class CalendarEvent(models.Model):
         :return: The timezone-aware datetime that uniquely identifies this
         event in the recurrence chain.
         """
-        event_tz = timezone(self.event_tz)
+        event_tz = timezone(self.event_tz or self.env.user.tz or "UTC")
         recurrence_id = utc.localize(self.caldav_recurrence_id).astimezone(event_tz)
         return recurrence_id
 
@@ -268,7 +268,7 @@ class CalendarEvent(models.Model):
 
             base_event = self._get_caldav_base_event_by_uid(calendar, self.caldav_uid)
             if self.recurrence_id:
-                tz = timezone(self.event_tz or self.env.user.tz)
+                tz = timezone(self.event_tz or self.env.user.tz or "UTC")
                 start = utc.localize(self.start).astimezone(tz)
                 # We have an event in the recurrence chain that differs from the base
                 # We need to add an iCalendar VEVENT with recurrence-id or update it
