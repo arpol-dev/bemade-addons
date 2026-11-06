@@ -589,3 +589,44 @@ END:VCALENDAR"""
         self.assertFalse(events.recurrence_id)
         notes = events.message_ids.filtered(lambda m: "non importée" in (m.body or ""))
         self.assertTrue(notes)
+
+
+@tagged("post_install", "-at_install")
+class TestAllDayRecurrenceExport(TransactionCase):
+    def _allday_series(self):
+        base = self.env["calendar.event"].create(
+            {
+                "name": "Congé",
+                "event_tz": "Europe/Paris",
+                "allday": True,
+                "start_date": date(2027, 1, 8),
+                "stop_date": date(2027, 1, 8),
+                "recurrency": True,
+                "rrule_type": "weekly",
+                "interval": 1,
+                "fri": True,
+                "end_type": "end_date",
+                "until": date(2027, 1, 29),
+            }
+        )
+        return base, base.recurrence_id.calendar_event_ids.filtered(
+            lambda event: not event.is_base_event
+        )[:1]
+
+    def test_allday_recurrence_end_is_exported_as_date(self):
+        """RFC 5545: UNTIL has the same type as DTSTART, so a DATE for all-day events."""
+        base, _occurrence = self._allday_series()
+        data = {}
+        base._add_event_recurrence(data)
+        rule = data["rrule"].to_ical().decode("utf-8")
+        self.assertIn("UNTIL=20270129", rule)
+        self.assertNotIn("UNTIL=20270129T", rule)
+
+    def test_allday_recurrence_id_is_exported_as_date(self):
+        """RFC 5545: RECURRENCE-ID has the same type as DTSTART, so a DATE here too."""
+        _base, occurrence = self._allday_series()
+        self.assertTrue(occurrence)
+        data = {}
+        occurrence._add_event_recurrence_id(data)
+        self.assertIsInstance(data["recurrence-id"].dt, date)
+        self.assertNotIsInstance(data["recurrence-id"].dt, datetime)
