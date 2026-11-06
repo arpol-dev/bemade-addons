@@ -714,3 +714,26 @@ class TestCaldavEventCreation(TransactionCase):
         self.assertEqual(list(kwargs), ["ical"])
         self.assertTrue(kwargs["ical"].startswith("BEGIN:VCALENDAR"))
         self.assertIn(f"UID:{event.caldav_uid}", kwargs["ical"])
+
+
+@tagged("post_install", "-at_install")
+class TestAllDayCaldavMatch(TransactionCase):
+    def test_allday_event_matches_its_caldav_start(self):
+        """All-day events have a DATE start on the CalDAV side, without a timezone."""
+        event = self.env["calendar.event"].create(
+            {
+                "name": "Congé",
+                "allday": True,
+                "start_date": date(2027, 1, 8),
+                "stop_date": date(2027, 1, 8),
+            }
+        )
+        component = icalendar.Calendar.from_ical(
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20270108\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        ).walk("VEVENT")[0]
+        caldav_event = MagicMock()
+        caldav_event.icalendar_component = component
+        self.assertTrue(event._matches_caldav_start(caldav_event))
+        component["dtstart"] = icalendar.vDate(date(2027, 1, 9))
+        self.assertFalse(event._matches_caldav_start(caldav_event))

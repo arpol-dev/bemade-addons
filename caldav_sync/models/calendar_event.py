@@ -388,6 +388,8 @@ class CalendarEvent(models.Model):
         event_start = caldav_event.icalendar_component.get(
             "dtstart"
         ).dt  # pyright: ignore[reportAttributeAccessIssue]
+        if isinstance(event_start, date) and not isinstance(event_start, datetime):
+            return self.start_date == event_start
         tz = event_start.tzinfo
         self_start = utc.localize(self.start).astimezone(tz)
         return self_start == event_start
