@@ -765,3 +765,85 @@ class TestOccurrenceWithoutTimezone(TransactionCase):
         data = {}
         occurrence._add_event_recurrence_id(data)
         self.assertIn("recurrence-id", data)
+
+
+@tagged("post_install", "-at_install")
+class TestRecurrenceChanges(TransactionCase):
+    def _monthly_event(self):
+        return self.env["calendar.event"].create(
+            {
+                "name": "Tenue",
+                "event_tz": "Europe/Paris",
+                "start": datetime(2027, 1, 10, 8, 0),
+                "stop": datetime(2027, 1, 10, 9, 0),
+                "recurrency": True,
+                "rrule_type": "monthly",
+                "month_by": "day",
+                "weekday": "SUN",
+                "byday": "2",
+                "interval": 1,
+                "end_type": "count",
+                "count": 3,
+            }
+        )
+
+    def test_monthly_rule_ignores_weekly_day_flags(self):
+        """A 2nd-Sunday rule read from CalDAV has no weekly day flag, so a
+        differing flag must not rewrite the series."""
+        event = self._monthly_event()
+        vals = {
+            "rrule_type": "monthly",
+            "month_by": "day",
+            "weekday": "SUN",
+            "byday": "2",
+            "interval": 1,
+            "end_type": "count",
+            "count": 3,
+            "sun": not event.sun,
+            "recurrence_update": "future_events",
+        }
+        self.assertEqual(event._get_recurrence_changes(vals), {})
+
+    def test_monthly_rule_detects_a_real_change(self):
+        event = self._monthly_event()
+        vals = {
+            "rrule_type": "monthly",
+            "month_by": "day",
+            "weekday": "SUN",
+            "byday": "3",
+            "interval": 1,
+            "end_type": "count",
+            "count": 3,
+            "recurrence_update": "future_events",
+        }
+        changes = event._get_recurrence_changes(vals)
+        self.assertEqual(changes.get("byday"), "3")
+        self.assertEqual(changes.get("recurrence_update"), "future_events")
+
+    def test_weekly_rule_still_compares_day_flags(self):
+        event = self.env["calendar.event"].create(
+            {
+                "name": "Hebdo",
+                "event_tz": "Europe/Paris",
+                "start": datetime(2027, 1, 8, 8, 0),
+                "stop": datetime(2027, 1, 8, 9, 0),
+                "recurrency": True,
+                "rrule_type": "weekly",
+                "interval": 1,
+                "fri": True,
+                "end_type": "count",
+                "count": 3,
+            }
+        )
+        vals = {
+            "rrule_type": "weekly",
+            "interval": 1,
+            "end_type": "count",
+            "count": 3,
+            "fri": False,
+            "mon": True,
+            "recurrence_update": "future_events",
+        }
+        changes = event._get_recurrence_changes(vals)
+        self.assertEqual(changes.get("mon"), True)
+        self.assertEqual(changes.get("fri"), False)

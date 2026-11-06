@@ -89,6 +89,9 @@ def _parse_rrule_string(rrule_str: str) -> Dict[str, Any]:
     return result
 
 
+WEEKLY_DAY_FIELDS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
 def _event_data_to_ical(event_data: Dict) -> str:
     """Serialize calendar.event data into a VCALENDAR string.
 
@@ -897,13 +900,28 @@ class CalendarEvent(models.Model):
             return {"recurrence_update": "all_events", "recurrency": False}
         if recurrency_vals and not self.recurrence_id:
             return recurrency_vals
-        changed_fields = {
-            key: recurrency_vals[key]
-            for key in recurrency_vals.keys()
-            if hasattr(self, key) and recurrency_vals[key] != getattr(self, key)
+        # recurrence_update tells Odoo how to apply a change, it is not part of the rule
+        rule_vals = {
+            key: value
+            for key, value in recurrency_vals.items()
+            if key != "recurrence_update"
         }
-        if len(changed_fields) == 1 and "recurrence_update" in changed_fields:
+        if rule_vals.get("rrule_type") == "monthly" and rule_vals.get("month_by") == "day":
+            # A monthly rule by weekday does not use the weekly day flags
+            rule_vals = {
+                key: value
+                for key, value in rule_vals.items()
+                if key not in WEEKLY_DAY_FIELDS
+            }
+        changed_fields = {
+            key: value
+            for key, value in rule_vals.items()
+            if hasattr(self, key) and value != getattr(self, key)
+        }
+        if not changed_fields:
             return {}
+        if "recurrence_update" in recurrency_vals:
+            changed_fields["recurrence_update"] = recurrency_vals["recurrence_update"]
         return changed_fields
 
     def _get_value_changes(self, values: Dict) -> Dict:
